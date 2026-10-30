@@ -2,7 +2,7 @@
 
 ## Opción recomendada: paquete del release
 
-La distribución 1.0.0 incluye `install.sh`, todos los módulos y el manifiesto de integridad. El instalador crea una distribución versionada, respeta la configuración existente y prepara `--upgrade` para versiones posteriores. Seguir [UPGRADE.md](UPGRADE.md).
+La distribución estable incluye `install.sh`, todos los módulos y el manifiesto de integridad. El instalador crea una distribución versionada, respeta la configuración existente y prepara `--upgrade` para versiones posteriores. Seguir [UPGRADE.md](UPGRADE.md).
 
 Los pasos de copia manual siguientes se conservan para instalaciones planas anteriores. Para disponer del actualizador automático, ejecutar después `install.sh` del paquete oficial sobre esa instalación.
 
@@ -38,7 +38,7 @@ install -m 0600 outbound-spam.conf.example /root/scripts/outbound-spam.conf.exam
 install -m 0600 outbound-spam.conf.example /root/scripts/outbound-spam.conf
 ```
 
-En una actualización, conservar `outbound-spam.conf`: reemplazar únicamente código y ejemplo. El script carga el ejemplo como valores por defecto y después las asignaciones de la configuración privada.
+En una actualización, conservar `outbound-spam.conf`: reemplazar únicamente código y ejemplo. El instalador y `--upgrade` no cambian los valores existentes ni añaden variables al archivo privado; como máximo notifican nombres nuevos ausentes para revisión. El script carga el ejemplo como valores por defecto y después las asignaciones de la configuración privada.
 
 Editar `/root/scripts/outbound-spam.conf`, especialmente:
 

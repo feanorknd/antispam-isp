@@ -320,6 +320,19 @@ def _install_entrypoints(source, target):
         write(target / name, (source / name).read_text(), 0o600 if name.endswith(".example") else 0o700)
 
 
+def assigned_names(text):
+    """Detección orientativa de asignaciones Bash, sin ejecutar el archivo privado."""
+    return set(re.findall(r"(?m)^\s*(?:(?:declare\s+-[A-Za-z]+|export)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=", text))
+
+
+def missing_new_variables(source, target, config_path):
+    previous = target / "outbound-spam.conf.example"
+    if not previous.is_file() or not config_path.is_file():
+        return []
+    added = assigned_names((source / "outbound-spam.conf.example").read_text()) - assigned_names(previous.read_text())
+    return sorted(added - assigned_names(config_path.read_text()))
+
+
 def _prepare(source, config, config_path, lock_fd):
     command = ["/bin/bash", str(source / "outbound-spam.sh"), "--config", str(config_path),
                "--state-dir", config["state_dir"], "--prepare-upgrade", "--upgrade-lock-fd", str(lock_fd)]
@@ -338,10 +351,17 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
     existing = (target / "outbound-spam.sh").exists()
     config_path = Path(config_path or target / "outbound-spam.conf").absolute()
     protected_directory(config_path.parent, create=True)
+    managed_entries = {target / name for name in ("outbound-spam.sh", "outbound-spam-status.sh", "outbound-spam.conf.example")}
+    if config_path in managed_entries:
+        raise ValueError("La configuración operativa no puede ser un componente de código/ejemplo gestionado")
+    config_existed = config_path.exists()
     if config_path.exists() or config_path.is_symlink():
         info = config_path.lstat()
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
             raise ValueError("La configuración existente debe ser privada y pertenecer al usuario ejecutor")
+    elif existing:
+        raise ValueError("La configuración existente no está disponible; no se crea ni sustituye durante un upgrade")
+    new_variables = missing_new_variables(source, target, config_path) if config_path.exists() else []
     if existing and config is None:
         config, commands = installed_context(source, config_path)
     with (root / "upgrade.lock").open("a") as upgrade_lock:
@@ -391,10 +411,12 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
             release = _copy_release(source, target, manifest)
             if existing:
                 preparer(release, config, config_path, operation_lock.fileno())
+                if not config_path.is_file() or config_path.is_symlink():
+                    raise ValueError("La configuración dejó de estar disponible; se cancela sin regenerarla")
             changed = True
             _install_entrypoints(release, target)
             _activate(target, release)
-            if not config_path.exists():
+            if not existing and not config_path.exists():
                 initial = (release / "outbound-spam.conf.example").read_text()
                 initial = initial.replace("report=(admin@example.org)", "report=()")
                 initial = initial.replace("notify=true", "notify=false")
@@ -411,7 +433,8 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                 started = True
                 commands.run("systemctl", ["start", Path(config["service_unit"]).name])
             return {"version": manifest["version"], "target": str(target), "config": str(config_path),
-                    "service_restarted": was_active, "backup": str(backup)}
+                    "service_restarted": was_active, "backup": str(backup),
+                    "config_preserved": config_existed, "config_created": not config_existed, "missing_new_variables": new_variables}
         except Exception:
             if not started:
                 if existing and state_saved:

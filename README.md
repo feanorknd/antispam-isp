@@ -1,6 +1,6 @@
 # Outbound Spam Monitor
 
-Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.0.0**.
+Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.0.1**.
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
 
@@ -23,7 +23,7 @@ VERSION                       Versión de la distribución
 
 ## Instalación y actualización
 
-Descargar el paquete y `SHA256SUMS` del [release 1.0.0](https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.0), comprobar el checksum, extraer y ejecutar:
+Descargar el paquete y `SHA256SUMS` del [release 1.0.1](https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.1), comprobar el checksum, extraer y ejecutar:
 
 ```bash
 sudo ./install.sh --install-deps
@@ -38,6 +38,8 @@ sudo /root/scripts/outbound-spam.sh --upgrade
 ```
 
 El instalador conserva el archivo operativo y el estado. Las versiones completas se guardan bajo `.antispam/releases/` y se activan mediante `current`; el directorio `lib/` de otras utilidades del servidor se respeta. Véase [instalación y upgrade](docs/UPGRADE.md).
+
+Las configuraciones existentes no se reescriben, ni se les añaden valores automáticamente. Las variables nuevas ausentes se notifican para revisión. 1.0.1 corrige la configuración de retrasos en servidores cuyo `master.cf` contiene `discard` y otros agentes específicos de ISPConfig.
 
 ## Documentación
 

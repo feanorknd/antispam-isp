@@ -1,0 +1,26 @@
+{
+  "application_version": "1.0.1",
+  "schema_version": 3,
+  "date": "2026-10-30",
+  "matrix": [
+    {"image": "ubuntu:focal", "postfix": "3.4.13", "tests": 141, "result": "passed"},
+    {"image": "debian:bullseye", "postfix": "3.5.25", "tests": 141, "result": "passed"},
+    {"image": "ubuntu:jammy", "postfix": "3.6.4", "tests": 141, "result": "passed"},
+    {"image": "ubuntu:noble", "postfix": "3.8.6", "tests": 141, "result": "passed"},
+    {"image": "ubuntu:26.04", "postfix": "3.10.6", "tests": 141, "result": "passed"}
+  ],
+  "regressions": [
+    "standard master including discard with unexposed delay variables",
+    "representative anonymized ISPConfig main/master, selective relay and MX/FILTER rules preserved",
+    "local known pipe agents and hyphenated transport names",
+    "generic external pipe methods not silently treated as local",
+    "incoming smtp/inet not confused with outbound smtp/unix",
+    "existing private configuration content, inode, mtime and mode preserved",
+    "new defaults do not overwrite existing values; missing new variables only reported",
+    "missing upgrade config is never regenerated",
+    "actual public 1.0.0 updater installs patch using inherited operation lock"
+  ],
+  "published_config_fixture": false,
+  "private_test_sources": "tests/ excluded from Git and installation assets",
+  "systemctl_commands": "simulated; isolated Postfix restart and preparation execute natively"
+}

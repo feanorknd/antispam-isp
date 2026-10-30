@@ -2,16 +2,16 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-## Instalación nueva desde el release 1.0.0
+## Instalación nueva desde el release 1.0.1
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.0/antispam-isp-1.0.0.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.0/SHA256SUMS
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.1/antispam-isp-1.0.1.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.1/SHA256SUMS
 sha256sum -c SHA256SUMS
-tar -xzf antispam-isp-1.0.0.tar.gz
-sudo ./antispam-isp-1.0.0/install.sh --install-deps
+tar -xzf antispam-isp-1.0.1.tar.gz
+sudo ./antispam-isp-1.0.1/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
@@ -50,7 +50,9 @@ Cuando hay una versión más moderna:
 6. Activa la versión completa mediante un cambio atómico de `current` y actualiza los puntos de entrada propios.
 7. Vuelve a iniciar el servicio únicamente si estaba activo.
 
-La configuración operativa se conserva byte por byte. También se conservan el estado, reservas de avisos, retenciones, bloqueos, configuración de Postfix y decisiones de relay. Se actualiza el ejemplo y, si existe, el comprobador Monit gestionado.
+La configuración operativa se conserva byte por byte, sin cambiar su inode, fecha de modificación ni permisos. Tampoco se añaden automáticamente variables. Si el ejemplo nuevo incorpora nombres ausentes tanto en el ejemplo anterior como en la configuración privada, se notifican en `missing_new_variables` para revisión; esta detección de asignaciones Bash es orientativa y no ejecuta el archivo privado.
+
+Una actualización no regenera una configuración desaparecida: se cancela antes de cambiar el programa. En una instalación nueva solo se crea la configuración si no existía. También se conservan el estado, reservas de avisos, retenciones, bloqueos, configuración de Postfix y decisiones de relay. Se actualiza el ejemplo y, si existe, el comprobador Monit gestionado.
 
 ## Distribución instalada
 
@@ -59,8 +61,8 @@ La configuración operativa se conserva byte por byte. También se conservan el 
 /root/scripts/outbound-spam.conf
 /root/scripts/outbound-spam-status.sh
 /root/scripts/outbound-spam.conf.example
-/root/scripts/.antispam/current -> releases/1.0.0
-/root/scripts/.antispam/releases/1.0.0/
+/root/scripts/.antispam/current -> releases/1.0.1
+/root/scripts/.antispam/releases/1.0.1/
 /root/scripts/.antispam/installation.json
 ```
 

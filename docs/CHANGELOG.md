@@ -1,5 +1,15 @@
 # Cambios efectuados
 
+## 1.0.1 — 2026-10-30
+
+- Corregida la generación de Ratelimits para `master.cf` con `discard`: se comprueba si Postfix expone cada clave antes de escribirla.
+- Descubrimiento de transportes `unix` y reconocimiento conservador de agentes locales; los `pipe` genéricos no se clasifican como locales por defecto.
+- Soporte de nombres con guion al reemplazar asignaciones, como `scalemail-backend`.
+- Regresión con perfil ISPConfig anonimizado: relay selectivo, MX/FILTER, MySQL, SASL, milters y agentes adicionales, conservando reglas ajenas y `master.cf`.
+- Conservación explícita de la configuración en instalación/upgrade: sin reescritura ni variables añadidas, comprobando bytes, inode y mtime. Las nuevas variables ausentes se notifican.
+- Una actualización con configuración desaparecida se cancela en vez de regenerarla con valores por defecto.
+- Verificadas 141 pruebas por distribución y el actualizador original 1.0.0 con el paquete corregido.
+
 ## 1.0.0 — 2026-10-30
 
 - Release 1.0.0 sustituido: `--install-deps` limitado a `postfix-sqlite` sin recomendaciones, con Python/Postfix previamente instalados.

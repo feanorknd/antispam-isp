@@ -14,6 +14,10 @@ El perfil utiliza mecanismos disponibles desde Postfix 3.1. Se ha probado con lo
 
 `postconf -M` permite conocer los transportes realmente definidos; solo se escriben sus variables específicas. Antes del reinicio se ejecuta `postfix check` y se verifican los valores efectivos con `postconf`. Las sobrescrituras incompatibles de `master.cf` se notifican para revisión.
 
+Desde 1.0.1 se consulta además `postconf -d -h NOMBRE` antes de generar cada variable por transporte. La existencia de `discard` en `master.cf` no implica que `postconf` exponga `discard_destination_rate_delay`: esas claves locales se omiten. Si falta una clave necesaria de un transporte externo seleccionado, se cancela antes de escribir. `error`/`retry` y agentes locales que sí exponen sus variables siguen configurándose normalmente.
+
+Solo se consideran transportes los servicios `unix`, no un servicio de recepción `smtp/inet`. Un agente `pipe` genérico no se da por local automáticamente: se reconocen los ejecutables de entrega local habituales (maildrop, Dovecot, scalemail y Mailman) y las declaraciones explícitas. Los nombres con guion, como `scalemail-backend`, se sustituyen sin duplicar asignaciones previas. Las rutas por MX/FILTER, mapas MySQL, controles SASL/TLS y el archivo `master.cf` no son reescritos por Ratelimits.
+
 Referencia oficial: [default_transport_rate_delay](https://www.postfix.org/postconf.5.html#default_transport_rate_delay), disponible desde 3.1. Los Postfix anteriores a 3.1 se rechazan antes de modificar archivos; no se sustituye el control por otro de semántica diferente.
 
 ## Comandos administrativos

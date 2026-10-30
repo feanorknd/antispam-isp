@@ -46,7 +46,7 @@ def remove_assignments(text, names, bash=False):
     """Eliminar solo las asignaciones administradas, incluidas continuaciones main.cf."""
     output, skipping = [], False
     for line in text.splitlines(keepends=True):
-        pattern = r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=" if bash else r"^([A-Za-z_][A-Za-z0-9_]*)\s*="
+        pattern = r"^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=" if bash else r"^([A-Za-z_][A-Za-z0-9_-]*)\s*="
         match = re.match(pattern, line)
         if match:
             skipping = match.group(1) in names
@@ -76,8 +76,14 @@ def rate_parameters(config, commands):
         raise ValueError("Duración Postfix inválida")
     if delay.isdigit():
         delay += "s"
-    master = [line.split() for line in commands.pc("-M").splitlines() if line.split()]
-    services = {line[0].split("/")[0] for line in master}
+    master = []
+    for line in commands.pc("-M").splitlines():
+        fields = line.split()
+        if len(fields) > 1 and fields[1] == "=":
+            fields = fields[2:]
+        if len(fields) >= 8 and fields[1] == "unix":
+            master.append(fields)
+    services = {line[0] for line in master}
     destination_delay = str(config["postfix_destination_delay"])
     if not re.fullmatch(r"\d+[smhdw]?", destination_delay):
         raise ValueError("Retraso por destino inválido")
@@ -89,13 +95,21 @@ def rate_parameters(config, commands):
     if not remote:
         raise ValueError("No se encuentra ningún transporte externo configurado en master.cf")
     for transport in sorted(remote):
-        result[transport + "_destination_rate_delay"] = destination_delay
-        result[transport + "_transport_rate_delay"] = delay
+        for suffix, value in (("_destination_rate_delay", destination_delay), ("_transport_rate_delay", delay)):
+            key = transport + suffix
+            if not commands.pc("-d", "-h", key):
+                raise ValueError("Postfix no expone el parámetro del transporte externo " + key)
+            result[key] = value
     local = ({"local", "lmtp", "virtual"} | set(config["local_transports"])) & services
     for fields in master:
-        row = fields[2:] if len(fields) > 1 and fields[1] == "=" else fields
-        if len(row) >= 8 and row[7] in ("local", "lmtp", "virtual", "pipe", "error", "discard"):
-            local.add(fields[0].split("/")[0])
+        agent = Path(fields[7]).name
+        if agent in ("local", "lmtp", "virtual", "error"):
+            local.add(fields[0])
+        # pipe puede ser entrega local o un método externo (UUCP/BSMTP).
+        # Solo inferir locales para ejecutables conocidos; el resto se declara.
+        argv = next((f[len("argv="):] for f in fields[8:] if f.startswith("argv=")), "")
+        if agent == "pipe" and Path(argv).name in ("maildrop", "deliver", "dovecot-lda", "scalemail-store", "postfix-to-mailman.py"):
+            local.add(fields[0])
     content_filter = commands.pc("-h", "content_filter").split(":", 1)[0].strip()
     if content_filter and content_filter in remote:
         raise ValueError("El filtro comparte el transporte de Internet; use un transporte de filtro separado para preservar locales")
@@ -103,8 +117,13 @@ def rate_parameters(config, commands):
         local.add(content_filter)
     local.difference_update(config["external_transports"])
     for transport in sorted(local):
-        result[transport + "_destination_rate_delay"] = "0s"
-        result[transport + "_transport_rate_delay"] = "0s"
+        for suffix in ("_destination_rate_delay", "_transport_rate_delay"):
+            key = transport + suffix
+            # Estar en master.cf no implica que postconf exponga estas variables:
+            # discard es un ejemplo estándar. No escribir claves que no se podrán
+            # verificar en esta instalación concreta.
+            if commands.pc("-d", "-h", key):
+                result[key] = "0s"
     for line in commands.pc("-P").splitlines():
         key = line.split("=", 1)[0].strip().rsplit("/", 1)[-1]
         value = line.split("=", 1)[1].strip() if "=" in line else ""
