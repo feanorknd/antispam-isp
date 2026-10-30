@@ -2,6 +2,8 @@
 
 ## 1.0.0 — 2026-10-30
 
+- Release 1.0.0 sustituido: `--install-deps` limitado a `postfix-sqlite` sin recomendaciones, con Python/Postfix previamente instalados.
+
 - Primera publicación estable en `github.com/feanorknd/antispam-isp`.
 - Paquete instalable completo, `install.sh`, manifiesto interno y `SHA256SUMS`.
 - Instalación aislada en `.antispam/releases/` y activación atómica de una versión coherente.

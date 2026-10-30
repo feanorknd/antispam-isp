@@ -20,6 +20,8 @@ Descargar **`antispam-isp-1.0.0.tar.gz`** y **`SHA256SUMS`**, comprobar el check
 ./install.sh --install-deps
 ```
 
+Esta opción instala **únicamente `postfix-sqlite`**, sin recomendaciones. Python 3.8+ y Postfix deben estar disponibles previamente; las demás herramientas se gestionan fuera del instalador.
+
 Editar `/root/scripts/outbound-spam.conf` antes de activar avisos/acciones, y seguir `docs/INSTALLATION.md` y `docs/UPGRADE.md`. La configuración nueva comienza con avisos desactivados.
 
 ## Actualizaciones posteriores

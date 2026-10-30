@@ -14,7 +14,7 @@ tar -xzf antispam-isp-1.0.0.tar.gz
 sudo ./antispam-isp-1.0.0/install.sh --install-deps
 ```
 
-`--install-deps` usa apt para Python, postfix-sqlite, certificados, cliente MySQL, Monit y OpenSSL. Omitirlo si ya están presentes. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
+`--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
 
 Por defecto instala en `/root/scripts`. Admite `--target /otra/ruta` y `--config /ruta/privada.conf`. En una instalación nueva crea una configuración privada con avisos desactivados y sin destinatarios ficticios ni excepción ficticia de boletín.
 

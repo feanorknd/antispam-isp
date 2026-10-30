@@ -47,10 +47,11 @@ Actualizado: **2026-10-30**, versión 1.0.0.
 - [x] Subir el código a `git@github.com:feanorknd/antispam-isp.git` y etiquetar `v1.0.0`.
 - [x] Publicar el release estable 1.0.0 con paquete instalable y `SHA256SUMS`.
 - [x] Verificar la API y la descarga públicas sin autenticación, con coincidencia del SHA-256.
+- [x] Limitar `--install-deps` a `postfix-sqlite` sin recomendaciones, requiriendo Python y Postfix preinstalados.
 
 ## En ejecución
 
-Ninguna tarea de desarrollo/publicación en ejecución al cerrar 1.0.0. Release: https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.0 . Las tareas de despliegue real figuran abajo.
+- [ ] Sustituir el release 1.0.0 por el instalador limitado a postfix-sqlite y verificar su descarga.
 
 ## Programadas por el software, al instalarlo en el servidor
 

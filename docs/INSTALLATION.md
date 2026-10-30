@@ -8,11 +8,11 @@ Los pasos de copia manual siguientes se conservan para instalaciones planas ante
 
 ## 1. Dependencias
 
-En el servidor de correo Debian/Ubuntu:
+En un servidor Debian/Ubuntu con Python 3.8+ y Postfix ya instalados, el único paquete que instala la opción `--install-deps` es:
 
 ```bash
 apt-get update
-apt-get install python3 postfix-sqlite
+apt-get install --no-install-recommends -y postfix-sqlite
 ```
 
 Se presupone una instalación funcional de Postfix y Monit. El cliente `mysql` se utiliza para la instantánea automática de rutas ISPConfig del bloqueo remoto y para el cambio de contraseña. Este último necesita además `openssl` y `doveadm`. Para SMTP directo con TLS, debe estar instalado `ca-certificates`.

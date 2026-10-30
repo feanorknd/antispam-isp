@@ -31,7 +31,7 @@ sudo nano /root/scripts/outbound-spam.conf
 sudo /root/scripts/outbound-spam.sh --doctor
 ```
 
-La configuración nueva empieza con avisos desactivados. La guía indica cómo activar el guard, el servicio y Monit. Para actualizar después:
+`--install-deps` instala únicamente `postfix-sqlite`, sin recomendaciones; Python y Postfix deben existir previamente. La configuración nueva empieza con avisos desactivados. La guía indica cómo activar el guard, el servicio y Monit. Para actualizar después:
 
 ```bash
 sudo /root/scripts/outbound-spam.sh --upgrade

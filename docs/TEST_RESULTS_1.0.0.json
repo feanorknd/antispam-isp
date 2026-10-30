@@ -13,6 +13,7 @@
     "reproducible installation archive and allowlist",
     "no tests, server copies, logs or databases in archive",
     "fresh installer and installed launcher with real Python",
+    "install-deps requests only postfix-sqlite without recommendations",
     "real preparation of synthetic version 1.0.1 preserving state",
     "stable public API metadata and official asset URLs",
     "checksum and unsafe archive rejection before deployment",
@@ -22,11 +23,5 @@
   ],
   "systemctl_commands": "simulated; unit syntax and daemon execution validated natively",
   "github_network_in_tests": false,
-  "post_publication_check": {
-    "latest_stable_public_api": "1.0.0",
-    "unauthenticated_download": "passed",
-    "archive_sha256": "c3c7e3fd9157ad13931197b40d37a743f860410502dd3ed1ed6cb2fc387f54dc",
-    "release": "https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.0"
-  },
   "test_sources": "kept in local validation workspace, excluded from public Git and release"
 }
