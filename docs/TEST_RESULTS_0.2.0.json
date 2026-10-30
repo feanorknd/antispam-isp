@@ -1,0 +1,44 @@
+{
+  "application_version": "0.2.0",
+  "schema_version": 2,
+  "date": "2026-10-29",
+  "matrix": [
+    {"image": "ubuntu:focal", "postfix": "3.4.13", "tests": 85, "result": "passed"},
+    {"image": "debian:bullseye", "postfix": "3.5.25", "tests": 85, "result": "passed"},
+    {"image": "ubuntu:jammy", "postfix": "3.6.4", "tests": 85, "result": "passed"},
+    {"image": "ubuntu:noble", "postfix": "3.8.6", "tests": 85, "result": "passed"},
+    {"image": "ubuntu:26.04", "postfix": "3.10.6", "tests": 85, "result": "passed"}
+  ],
+  "native_smtp_cases": [
+    "isolated configuration edit, validation and restart",
+    "SASL remote guard preserves local recipient controls",
+    "local LMTP delivery without the SMTP transport delay",
+    "direct SMTP delivery with empty relayhost",
+    "sender_dependent_relayhost_maps selective relay",
+    "transport_maps selective relay",
+    "shared SMTP transport delay across those destinations"
+  ],
+  "historical_simulation": {
+    "source": "mail.log-20261025.gz",
+    "ticks_per_scenario": 10081,
+    "max_sent": 100,
+    "time_period": 3600,
+    "foreign_sender_limit": 25,
+    "notice_minimum_seconds": 21600,
+    "accounts_with_incidents": 3,
+    "notifications": 56,
+    "notification_distribution": [26, 15, 15],
+    "first_alerts_local_time": ["2026-10-18T15:59:00+02:00", "2026-10-21T06:34:00+02:00", "2026-10-21T06:34:00+02:00"],
+    "account_and_recipient_details": "private, excluded from Git",
+    "server_side_effects": false
+  },
+  "benchmark": {
+    "file_bytes": 69299139,
+    "lines": 449707,
+    "initial_seconds": 3.6367,
+    "incremental_unchanged_seconds": 0.0069,
+    "incremental_bytes_read": 0,
+    "max_rss_kib": 30068,
+    "sqlite_bytes_after_checkpoint": 1843200
+  }
+}

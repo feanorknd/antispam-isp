@@ -1,0 +1,68 @@
+# Outbound Spam Monitor
+
+Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.0.0**.
+
+Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
+
+## Archivos principales
+
+```text
+outbound-spam.sh               Entrada Bash
+install.sh                     Instalador para servidor nuevo
+outbound-spam.conf.example     Configuración y arrays de ejemplo
+lib/outbound_spam.py           Motor Python 3.8+ / SQLite, sin pip
+lib/postfix_settings.py        Ajustes coordinados de configuración y Postfix
+lib/runtime.py                Configuración estable y servicio systemd
+lib/load_config.sh            Lectura de variables y arrays Bash
+lib/state_recovery.py         Copias SQLite y registro crítico independiente
+lib/distribution.py           Instalación versionada y --upgrade desde GitHub
+outbound-spam-status.sh        Comprobador ligero de Monit
+docs/                         Documentación completa y seguimiento
+VERSION                       Versión de la distribución
+```
+
+## Instalación y actualización
+
+Descargar el paquete y `SHA256SUMS` del [release 1.0.0](https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.0), comprobar el checksum, extraer y ejecutar:
+
+```bash
+sudo ./install.sh --install-deps
+sudo nano /root/scripts/outbound-spam.conf
+sudo /root/scripts/outbound-spam.sh --doctor
+```
+
+La configuración nueva empieza con avisos desactivados. La guía indica cómo activar el guard, el servicio y Monit. Para actualizar después:
+
+```bash
+sudo /root/scripts/outbound-spam.sh --upgrade
+```
+
+El instalador conserva el archivo operativo y el estado. Las versiones completas se guardan bajo `.antispam/releases/` y se activan mediante `current`; el directorio `lib/` de otras utilidades del servidor se respeta. Véase [instalación y upgrade](docs/UPGRADE.md).
+
+## Documentación
+
+Empezar por [docs/README.md](docs/README.md) y [la instalación](docs/INSTALLATION.md).
+
+- [Configuración](docs/CONFIGURATION.md)
+- [Operación y resolución de incidentes](docs/OPERATIONS.md)
+- [Diseño y límites del recuento](docs/ARCHITECTURE.md)
+- [Pruebas y rendimiento](docs/TESTS.md)
+- [Simulación de la semana del 18 al 25 de octubre](docs/SIMULATION_20261025.md)
+- [Resultado con dominio remitente y avisos cada seis horas](docs/SIMULATION_0.2.0.md)
+- [Ajustes de Postfix, relays selectivos y recomendaciones](docs/POSTFIX.md)
+- [Servicio systemd y edición con nano](docs/SERVICE.md)
+- [Recuperación de SQLite](docs/RECOVERY.md)
+- [Releases e instalación automática](docs/UPGRADE.md)
+- [Versiones y compatibilidad](docs/VERSIONS.md)
+- [Cambios efectuados](docs/CHANGELOG.md)
+- [Tareas, programación y pendientes](docs/TASKS.md)
+
+## Desarrollo
+
+```bash
+python3 tools/build_release.py --output dist
+```
+
+Las pruebas y fixtures permanecen en el entorno local de validación, excluidos de la publicación. Sus resultados y metodología están en [docs/TESTS.md](docs/TESTS.md).
+
+Repositorio público: [feanorknd/antispam-isp](https://github.com/feanorknd/antispam-isp). `.gitignore` excluye `tests/`, `etc/`, `var/`, la configuración operativa, cachés, bases de datos, estados y artefactos de construcción.

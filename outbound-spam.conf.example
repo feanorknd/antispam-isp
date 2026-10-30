@@ -1,0 +1,85 @@
+# shellcheck shell=bash disable=SC2034
+# Configuración Bash. Instalar como /root/scripts/outbound-spam.conf, modo 0600.
+# Versión 1.0.0. Las direcciones son ejemplos: sustituir antes de activar avisos.
+log_file=/var/log/mail.log
+state_dir=/var/lib/outbound-spam
+max_sent=100
+time_period=3600
+report=(admin@example.org)
+ignore=()
+# Cuenta SASL => máximo de destinatarios externos : segundos de ventana.
+declare -A custom_limits=( ["boletin@example.org"]="3000:3600" )
+
+# Primera ejecución: end empieza al final y señala calentamiento durante la ventana.
+# start lee el fichero actual desde el principio; solo actúa sobre incidentes recientes.
+initial_position=end
+max_read_bytes=67108864
+command_timeout=30
+stale_after=180
+run_interval=60                    # descanso DESPUÉS de terminar una pasada
+lock_wait=120                      # espera máxima de comandos administrativos
+service_unit=/etc/systemd/system/outbound-spam.service
+backup_interval=300
+integrity_interval=300
+backup_copies=3
+rotation_grace=300
+retention_days=14
+max_action_age=180
+reminder_interval=21600             # mínimo efectivo: seis horas por cuenta, incluso tras --ack
+foreign_sender_divisor=4           # 100 pasa a 25 si hay MAIL FROM de otro dominio en la ventana
+sample_count=10
+
+# Acciones independientes. Activar block_smtp requiere --install-postfix-guard.
+notify=true
+block_smtp=false
+hold_queue=false
+reset_password=false
+
+# auto consulta la configuración real y los mapas de Postfix, con caché por ejecución.
+# static es útil para pruebas/offline o instalaciones con clasificación explícita.
+routing_mode=auto
+local_domains=()
+guard_route_addresses=()           # alias/rutas adicionales a publicar en el bloqueo remoto
+external_transports=(smtp relay)
+local_transports=(local virtual lmtp dovecot maildrop mailman discard error)
+
+guard_map=/etc/postfix/outbound-spam-access
+postfix_config=/etc/postfix
+monit_config=/etc/monit/conf-available/outbound-spam
+monit_enabled=/etc/monit/conf-enabled/outbound-spam
+monit_script=/etc/monit/scripts/outbound-spam-status.sh
+cron_file=/etc/cron.d/outbound-spam
+postfix_outbound_delay=auto        # ceil(time_period / (max_sent * postfix_headroom)), entre 1 y 5 s
+postfix_destination_delay=10s      # por destino/nexthop, simultáneo al freno de transporte
+postfix_headroom=10
+postfix_client_message_limit=0     # por IP, NO por usuario; 0 evita limitar también correo local/NAT
+
+# sendmail: entrega al Postfix local. smtp: envío directo a un servidor independiente.
+alert_transport=sendmail
+alert_from=outbound-spam@example.org
+smtp_host=localhost
+smtp_port=25
+smtp_security=plain                 # plain | starttls | tls
+smtp_user=
+smtp_password=
+
+# ISPConfig monoservidor: cliente mysql por socket, sin contraseña en argumentos.
+ispconfig_database=dbispconfig
+ispconfig_server_id=1
+mysql_socket=                        # vacío: socket por defecto del cliente mysql
+# Solo se admite SHA512-CRYPT ($6$), con o sin prefijo {SHA512-CRYPT} existente.
+# Se genera una contraseña aleatoria desconocida; el administrador la restablece.
+
+# Rutas de los ejecutables; pueden cambiar entre distribuciones.
+postconf_bin=/usr/sbin/postconf
+postmap_bin=/usr/sbin/postmap
+postcat_bin=/usr/sbin/postcat
+postqueue_bin=/usr/sbin/postqueue
+postsuper_bin=/usr/sbin/postsuper
+postfix_bin=/usr/sbin/postfix
+sendmail_bin=/usr/sbin/sendmail
+mysql_bin=/usr/bin/mysql
+doveadm_bin=/usr/bin/doveadm
+openssl_bin=/usr/bin/openssl
+monit_bin=/usr/bin/monit
+systemctl_bin=/bin/systemctl

@@ -1,0 +1,29 @@
+{
+  "application_version": "0.1.0",
+  "date": "2026-10-29",
+  "matrix": [
+    {"image": "ubuntu:focal", "python": "3.8.10", "postfix": "3.4.13", "tests": 50, "result": "passed"},
+    {"image": "ubuntu:jammy", "python": "3.10.12", "postfix": "3.6.4", "tests": 50, "result": "passed"},
+    {"image": "ubuntu:noble", "python": "3.12.3", "postfix": "3.8.6", "tests": 50, "result": "passed"},
+    {"image": "debian:bullseye", "python": "3.9.2", "postfix": "3.5.25", "tests": 50, "result": "passed"},
+    {"image": "ubuntu:26.04", "python": "3.14.4", "postfix": "3.10.6", "tests": 50, "result": "passed"}
+  ],
+  "native_integrations": ["isolated Postfix SMTP and queue", "Monit configuration validator"],
+  "ispconfig_database": "simulated commands; validation against the destination installation pending",
+  "shellcheck": "passed at warning severity",
+  "benchmark": {
+    "mode": "offline",
+    "python": "3.12.3",
+    "file_bytes": 69299139,
+    "lines": 449707,
+    "initial_seconds": 1.6734,
+    "incremental_unchanged_seconds": 0.0099,
+    "incremental_bytes_read": 0,
+    "max_rss_kib": 29648,
+    "sqlite_bytes_after_checkpoint": 1794048,
+    "authenticated_messages": 486,
+    "accepted_external_recipient_events": 642,
+    "unaccepted_transactions": 24,
+    "coverage_issues_at_reference_time": 0
+  }
+}

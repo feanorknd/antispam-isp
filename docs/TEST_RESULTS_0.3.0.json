@@ -1,0 +1,21 @@
+{
+  "application_version": "0.3.0",
+  "schema_version": 3,
+  "date": "2026-10-29",
+  "matrix": [
+    {"image": "ubuntu:focal", "postfix": "3.4.13", "tests": 120, "result": "passed"},
+    {"image": "debian:bullseye", "postfix": "3.5.25", "tests": 120, "result": "passed"},
+    {"image": "ubuntu:jammy", "postfix": "3.6.4", "tests": 120, "result": "passed"},
+    {"image": "ubuntu:noble", "postfix": "3.8.6", "tests": 120, "result": "passed"},
+    {"image": "ubuntu:26.04", "postfix": "3.10.6", "tests": 120, "result": "passed"}
+  ],
+  "systemd_tests": {
+    "unit_verification": "native systemd-analyze verify",
+    "daemon_and_sigterm": "real process with isolated Postfix",
+    "systemctl_install_commands": "simulated; container PID 1 is not systemd",
+    "pause_after_completed_pass_seconds": 60
+  },
+  "postfix_profile": {"destination_delay_seconds": 10, "smtp_transport_delay_seconds_at_100_per_hour": 4, "local_delay_seconds": 0},
+  "recovery_tests": ["verified backup and fallback", "independent critical journal", "counter cursor checksum", "notice cooldown", "password idempotence", "HOLD ownership", "interrupted release", "public guard reconstruction", "degraded mode without trusted history"],
+  "offline_benchmark": {"bytes": 69299139, "lines": 449707, "initial_seconds": 3.6454, "unchanged_seconds": 0.0084, "unchanged_bytes_read": 0}
+}

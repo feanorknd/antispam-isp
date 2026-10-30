@@ -1,0 +1,36 @@
+{
+  "application_version": "0.1.1",
+  "date": "2026-10-29",
+  "matrix": [
+    {"image": "ubuntu:focal", "tests": 57, "result": "passed"},
+    {"image": "ubuntu:jammy", "tests": 57, "result": "passed"},
+    {"image": "ubuntu:noble", "tests": 57, "result": "passed"},
+    {"image": "debian:bullseye", "tests": 57, "result": "passed"},
+    {"image": "ubuntu:26.04", "tests": 57, "result": "passed"}
+  ],
+  "native_integrations": ["Postfix SMTP and queue", "Monit configuration validator"],
+  "benchmark": {
+    "file_bytes": 69299139,
+    "lines": 449707,
+    "initial_seconds": 3.2916,
+    "incremental_unchanged_seconds": 0.0067,
+    "incremental_bytes_read": 0,
+    "max_rss_kib": 29744,
+    "sqlite_bytes_after_checkpoint": 1822720
+  },
+  "historical_simulation": {
+    "source": "mail.log-20261025.gz",
+    "lines": 428953,
+    "uncompressed_bytes": 72264652,
+    "ticks_per_scenario": 10081,
+    "max_sent": 100,
+    "time_period": 3600,
+    "reconstructed_queue_incidents": 3,
+    "observed_log_only_incidents": 1,
+    "reconstructed_queue_notifications": 333,
+    "observed_log_only_notifications": 152,
+    "reconstructed_monit_ticks": {"0": 898, "1": 9123, "2": 60},
+    "reconstructed_tick_budget_exceeded": 0,
+    "server_side_effects": false
+  }
+}

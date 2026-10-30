@@ -1,0 +1,28 @@
+# Copias del servidor: contienen logs y configuración potencialmente sensible.
+/etc/
+/var/
+/tests/
+/.dockerignore
+/.antispam/
+
+# Configuración operativa y estado local.
+/outbound-spam.conf
+*.conf
+**/recovery/
+status.json
+service-status.json
+.env
+*.last-good.json
+/state/
+*.sqlite3
+*.sqlite3-*
+*.db
+*.log
+*.eml
+*.tar.gz
+SHA256SUMS
+__pycache__/
+*.py[cod]
+.coverage
+.pytest_cache/
+/dist/

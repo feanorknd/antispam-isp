@@ -1,0 +1,26 @@
+{
+  "application_version": "1.0.0",
+  "schema_version": 3,
+  "date": "2026-10-30",
+  "matrix": [
+    {"image": "ubuntu:focal", "postfix": "3.4.13", "tests": 133, "result": "passed"},
+    {"image": "debian:bullseye", "postfix": "3.5.25", "tests": 133, "result": "passed"},
+    {"image": "ubuntu:jammy", "postfix": "3.6.4", "tests": 133, "result": "passed"},
+    {"image": "ubuntu:noble", "postfix": "3.8.6", "tests": 133, "result": "passed"},
+    {"image": "ubuntu:26.04", "postfix": "3.10.6", "tests": 133, "result": "passed"}
+  ],
+  "distribution_tests": [
+    "reproducible installation archive and allowlist",
+    "no tests, server copies, logs or databases in archive",
+    "fresh installer and installed launcher with real Python",
+    "real preparation of synthetic version 1.0.1 preserving state",
+    "stable public API metadata and official asset URLs",
+    "checksum and unsafe archive rejection before deployment",
+    "configuration and unrelated server libraries preserved",
+    "own service stop before operation lock",
+    "preparation failure rollback and failed start without unsafe state rewind"
+  ],
+  "systemctl_commands": "simulated; unit syntax and daemon execution validated natively",
+  "github_network_in_tests": false,
+  "test_sources": "kept in local validation workspace, excluded from public Git and release"
+}
