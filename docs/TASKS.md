@@ -1,6 +1,6 @@
 # Tareas y programación
 
-Actualizado: **2026-10-30**, versión 1.0.1.
+Actualizado: **2026-10-30**, versión 1.0.2.
 
 ## Completadas
 
@@ -54,10 +54,16 @@ Actualizado: **2026-10-30**, versión 1.0.1.
 - [x] Verificar 141 pruebas por distribución y una actualización con el actualizador real 1.0.0.
 - [x] Preservar configuración privada sin reescritura/variables añadidas; notificar únicamente nuevos nombres ausentes.
 - [x] Publicar 1.0.1 y verificar API/paquete públicos para actualizar desde 1.0.0.
+- [x] Mostrar calentamiento informativo sin error de Monit y sin ocultar incidentes/errores reales.
+- [x] Fechas humanas en la zona horaria del servidor para comandos e informes.
+- [x] Ayuda completa y guía práctica para spam, HOLD y falsos positivos.
+- [x] Resolver enlaces simbólicos del comando desde cualquier directorio.
+- [x] Renovar unidades systemd propias intactas durante upgrade y preservar personalizaciones/estado parado.
+- [x] Verificar 153 pruebas en las cinco distribuciones, incluidos cambios de zona horaria.
 
 ## En ejecución
 
-Ninguna tarea de publicación pendiente. Corrección disponible: https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.1 .
+- [ ] Publicar y verificar 1.0.2.
 
 ## Programadas por el software, al instalarlo en el servidor
 

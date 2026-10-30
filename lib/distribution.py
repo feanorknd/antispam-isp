@@ -4,6 +4,7 @@ import ast
 import contextlib
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -104,7 +105,7 @@ def make_manifest(source):
             raise ValueError("Falta un componente regular: " + name)
         files[name] = digest(path)
     return {"project": PROJECT, "format": 1, "upgrade_api": 1, "version": number,
-            "schema_version": 3, "python_min": [3, 8], "files": files}
+            "schema_version": 3, "python_min": [3, 8], "service_unit_api": 1, "files": files}
 
 
 def validate_tree(source, expected=None):
@@ -341,6 +342,35 @@ def _prepare(source, config, config_path, lock_fd):
         raise ValueError("La preparación de la actualización ha fallado: " + result.stderr.strip()[:300])
 
 
+def service_update_plan(release, manifest, target, config, config_path, previous_installation):
+    """Actualizar solo una unidad propia intacta, conservando su ExecStart y drop-ins."""
+    path = Path(config["service_unit"])
+    result = {"updated": False, "note": "Servicio no instalado", "sha256": None, "text": None}
+    if not path.exists():
+        return result
+    if path.is_symlink() or "# outbound-spam" not in path.read_text():
+        raise ValueError("La unidad no pertenece a outbound-spam")
+    original = path.read_text()
+    exec_lines = re.findall(r"(?m)^ExecStart=(.*)$", original)
+    if len(exec_lines) != 1 or not re.fullmatch(r"/bin/bash " + re.escape(str(target)) + r"/outbound-spam\.sh --config [A-Za-z0-9_./-]+ --state-dir [A-Za-z0-9_./-]+ --daemon", exec_lines[0]):
+        return dict(result, note="ExecStart personalizado: se conserva la unidad")
+    import runtime
+    current_template = runtime.render_service(config, target, str(config_path), exec_start=exec_lines[0])
+    old_hash = previous_installation.get("service_unit_sha256")
+    if original != current_template and (not old_hash or digest(path) != old_hash):
+        return dict(result, note="Unidad modificada manualmente: se conserva el archivo", sha256=old_hash)
+    if manifest.get("service_unit_api") != 1:
+        return dict(result, note="Release sin API de plantilla systemd: se conserva la unidad", sha256=old_hash)
+    spec = importlib.util.spec_from_file_location("antispam_candidate_runtime", release / "lib/runtime.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    rendered = module.render_service(config, target, str(config_path), exec_start=exec_lines[0])
+    if "# outbound-spam" not in rendered or re.findall(r"(?m)^ExecStart=(.*)$", rendered) != exec_lines:
+        raise ValueError("La plantilla candidata cambia la identidad del servicio")
+    return {"updated": rendered != original, "note": "Unidad gestionada actualizada" if rendered != original else "Unidad gestionada ya actualizada",
+            "sha256": hashlib.sha256(rendered.encode("utf-8")).hexdigest(), "text": rendered if rendered != original else None}
+
+
 def deploy(source, target, config_path=None, config=None, commands=None, preparer=_prepare):
     source, target = Path(source).absolute(), protected_directory(target, create=True)
     if source == target:
@@ -370,11 +400,12 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
             fcntl.flock(upgrade_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise ValueError("Ya hay otra instalación/actualización en curso")
-        was_active, started, changed, state_saved = False, False, False, False
+        was_active, started, changed, state_saved, unit_changed = False, False, False, False, False
+        unit_before, unit_mode, unit_plan = None, None, None
         old_link = os.readlink(str(root / "current")) if (root / "current").is_symlink() else None
         if (root / "current").exists() and old_link is None:
             raise ValueError("La ruta current no es un enlace gestionado")
-        backup = root / ("upgrade-backup-%d-%s" % (time.time(), secrets.token_hex(4)))
+        backup = root / ("upgrade-backup-%s-%s" % (time.strftime("%Y%m%d-%H%M%S%z"), secrets.token_hex(4)))
         backup.mkdir(mode=0o700)
         old_entries = {}
         for name in ("outbound-spam.sh", "outbound-spam-status.sh", "outbound-spam.conf.example", ".antispam/installation.json"):
@@ -410,6 +441,12 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                 state_saved = True
             release = _copy_release(source, target, manifest)
             if existing:
+                previous_installation = json.loads(old_entries.get(".antispam/installation.json", (b"{}", 0))[0])
+                unit_plan = service_update_plan(release, manifest, target, config, config_path, previous_installation)
+                if unit_plan["updated"]:
+                    unit_path = Path(config["service_unit"])
+                    unit_before, unit_mode = unit_path.read_text(), stat.S_IMODE(unit_path.stat().st_mode)
+                    write(backup / "service-unit.before", unit_before)
                 preparer(release, config, config_path, operation_lock.fileno())
                 if not config_path.is_file() or config_path.is_symlink():
                     raise ValueError("La configuración dejó de estar disponible; se cancela sin regenerarla")
@@ -422,8 +459,13 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                 initial = initial.replace("notify=true", "notify=false")
                 initial = re.sub(r"(?m)^declare -A custom_limits=.*$", "declare -A custom_limits=()", initial)
                 write(config_path, initial)
+            if unit_plan and unit_plan["updated"]:
+                unit_changed = True
+                write(Path(config["service_unit"]), unit_plan["text"], unit_mode)
+                commands.run("systemctl", ["daemon-reload"])
             write(root / "installation.json", json.dumps({"project": PROJECT, "version": manifest["version"],
-                  "target": str(target), "config": str(config_path), "installed_at": time.time()}))
+                  "target": str(target), "config": str(config_path), "installed_at": time.time(),
+                  "service_unit_sha256": unit_plan["sha256"] if unit_plan else None}))
             if existing and Path(config["monit_script"]).exists():
                 if "outbound-spam" not in Path(config["monit_script"]).read_text():
                     raise ValueError("El comprobador Monit instalado es ajeno")
@@ -434,7 +476,9 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                 commands.run("systemctl", ["start", Path(config["service_unit"]).name])
             return {"version": manifest["version"], "target": str(target), "config": str(config_path),
                     "service_restarted": was_active, "backup": str(backup),
-                    "config_preserved": config_existed, "config_created": not config_existed, "missing_new_variables": new_variables}
+                    "config_preserved": config_existed, "config_created": not config_existed, "missing_new_variables": new_variables,
+                    "service_unit_updated": bool(unit_plan and unit_plan["updated"]),
+                    "service_unit_note": unit_plan["note"] if unit_plan else "Servicio no instalado"}
         except Exception:
             if not started:
                 if existing and state_saved:
@@ -453,6 +497,9 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                             write(path, value.decode("utf-8"), mode)
                         elif path.exists():
                             path.unlink()
+                if unit_changed:
+                    write(Path(config["service_unit"]), unit_before, unit_mode)
+                    commands.run("systemctl", ["daemon-reload"])
                 if was_active:
                     commands.run("systemctl", ["start", Path(config["service_unit"]).name])
             else:

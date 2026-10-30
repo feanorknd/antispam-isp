@@ -1,5 +1,6 @@
 """Configuración estable, bucle secuencial e integración systemd."""
 import base64
+import datetime as dt
 import fcntl
 import hashlib
 import json
@@ -10,6 +11,39 @@ import signal
 import stat
 import subprocess
 import time
+
+
+DATE_FIELDS = {"last_success", "analysis_at", "created", "accepted", "opened", "event_time", "acked", "last_notice",
+               "attempted", "held_at", "last_attempt", "installed_at", "heartbeat", "worker_started", "at", "cutoff"}
+
+
+def human_timestamp(value):
+    local = dt.datetime.fromtimestamp(value).astimezone()
+    offset = local.strftime("%z")
+    offset = offset[:3] + ":" + offset[3:] if len(offset) == 5 else offset
+    return local.strftime("%Y-%m-%d %H:%M:%S %Z") + " (UTC" + offset + ")"
+
+
+def readable_dates(value):
+    """Copia para presentación; los epochs del estado interno siguen siendo numéricos."""
+    if isinstance(value, list):
+        return [readable_dates(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    result = {}
+    for key, item in value.items():
+        if key.endswith("_utc") and key[:-4] + "_local" in value:
+            continue
+        if key in DATE_FIELDS and isinstance(item, (int, float)) and not isinstance(item, bool):
+            result[key] = human_timestamp(item) if item else None
+        elif isinstance(item, str) and key.endswith(("_iso", "_local", "_utc")):
+            try:
+                result[key] = human_timestamp(dt.datetime.fromisoformat(item.replace("Z", "+00:00")).timestamp())
+            except ValueError:
+                result[key] = item
+        else:
+            result[key] = readable_dates(item)
+    return result
 
 
 def check_private(path, ancestors=True):
@@ -160,6 +194,35 @@ def managed_cron_remove(config):
     return content
 
 
+def render_service(config, base, config_path, exec_start=None):
+    for value in (str(base), config_path, config["state_dir"]):
+        if re.search(r"[^A-Za-z0-9_./-]", value):
+            raise ValueError("Las rutas del servicio no pueden contener espacios/metacaracteres")
+    command = exec_start or "/bin/bash %s/outbound-spam.sh --config %s --state-dir %s --daemon" % (base, config_path, config["state_dir"])
+    if "\n" in command or "\r" in command:
+        raise ValueError("ExecStart inválido")
+    return """# outbound-spam: generado por --install-service
+[Unit]
+Description=Outbound authenticated spam monitor
+After=network.target postfix.service
+
+[Service]
+Type=simple
+User=root
+UMask=0077
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+Environment=OUTBOUND_SPAM_SERVICE=1
+ExecStart=%s
+Restart=on-failure
+RestartSec=60
+KillMode=mixed
+TimeoutStopSec=600
+
+[Install]
+WantedBy=multi-user.target
+""" % command
+
+
 def install_service(config, commands, base, config_path, write_atomic):
     path = Path(config["service_unit"])
     if not path.parent.is_dir():
@@ -177,29 +240,7 @@ def install_service(config, commands, base, config_path, write_atomic):
             if code == Path("/"):
                 break
             code = code.parent
-    for value in (str(base), config_path, config["state_dir"]):
-        if re.search(r"[^A-Za-z0-9_./-]", value):
-            raise ValueError("Las rutas del servicio no pueden contener espacios/metacaracteres")
-    text = """# outbound-spam: generado por --install-service
-[Unit]
-Description=Outbound authenticated spam monitor
-After=network.target postfix.service
-
-[Service]
-Type=simple
-User=root
-UMask=0077
-Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
-Environment=OUTBOUND_SPAM_SERVICE=1
-ExecStart=/bin/bash %s/outbound-spam.sh --config %s --state-dir %s --daemon
-Restart=on-failure
-RestartSec=60
-KillMode=mixed
-TimeoutStopSec=600
-
-[Install]
-WantedBy=multi-user.target
-""" % (base, config_path, config["state_dir"])
+    text = render_service(config, base, config_path)
     previous = path.read_text() if path.exists() else None
     cron = managed_cron_remove(config)
     try:

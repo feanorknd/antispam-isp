@@ -20,6 +20,10 @@ Los ejemplos asumen el script instalado en `/root/scripts/outbound-spam.sh`.
 | `--status` | Sano | Incidente, retención o bloqueo | Error o estado atrasado |
 | Comprobador Monit | Sano | Incidente, retención o bloqueo | Error, estado ausente o atrasado |
 
+El calentamiento por sí solo es informativo y devuelve 0. `warming_up` e `info` lo describen sin añadirlo a `issues`. Las fechas de comandos e informes se muestran en la zona horaria del servidor, con abreviatura y offset; por ejemplo `2026-10-30 21:03:07 CET (UTC+01:00)`. Las líneas originales de log de las evidencias se conservan literalmente. Los epochs del archivo de estado/SQLite siguen siendo internos y no se convierten para los cálculos.
+
+`--help` incluye la explicación de cada operación y una guía de respuesta a incidentes con ejemplos sencillos. El mismo comando puede invocarse desde un enlace a su lanzador estable, sin depender del directorio actual.
+
 Si otra ejecución mantiene el bloqueo, `--run` termina sin duplicar trabajo; Monit detectará un proceso permanentemente atascado por la antigüedad del resumen.
 
 El servicio ejecuta pasadas secuenciales y espera 60 segundos desde el final. Los comandos administrativos esperan el bloqueo; `--lock-wait 600` permite ampliar esa espera. No necesitan parar el servicio para actuar sobre la cola.
@@ -97,7 +101,7 @@ Para evitar que la actividad legítima vuelva a superar el umbral, corregir su l
 
 | Situación | Tratamiento |
 |---|---|
-| `ventana en calentamiento` | Esperar a cubrir la mayor ventana desde el comienzo o hueco de cobertura |
+| `ventana en calentamiento` | Estado informativo, no error de Monit; esperar a cubrir la mayor ventana |
 | `pendiente de leer log` | Continuará en el siguiente minuto; ajustar presupuesto si es necesario |
 | `destinatarios/aceptación incompletos` | Falta información de un mensaje aceptado; comprobar la siguiente ejecución y la disponibilidad del spool |
 | `Transporte sin clasificar` | Añadir el transporte a los arrays adecuados |

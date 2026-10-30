@@ -1,5 +1,14 @@
 # Cambios efectuados
 
+## 1.0.2 — 2026-10-30
+
+- Calentamiento informativo: código 0 en Monit y `--status` si no hay otra incidencia; ataques/errores reales mantienen sus códigos.
+- Fechas humanas en la zona del servidor para comandos e informes, conservando epochs internos y evidencias originales.
+- `--help` describe todas las operaciones y añade una guía práctica de cuentas comprometidas, HOLD y falsos positivos.
+- Lanzador capaz de seguir enlaces simbólicos absolutos/relativos/encadenados desde cualquier directorio.
+- Actualización conservadora de unidad systemd en upgrades: plantilla candidata, respaldo, `daemon-reload`, ExecStart y drop-ins preservados, sin iniciar/habilitar unidades paradas.
+- Unidades base personalizadas se conservan y se notifican. En la transición desde 1.0.1 la plantilla operativa ya es compatible.
+
 ## 1.0.1 — 2026-10-30
 
 - Corregida la generación de Ratelimits para `master.cf` con `discard`: se comprueba si Postfix expone cada clave antes de escribirla.

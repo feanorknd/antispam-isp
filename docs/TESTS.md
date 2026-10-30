@@ -85,6 +85,11 @@ docker run --rm --network none outbound-spam-tests:focal postconf -h mail_versio
 - Regresión con master completo (incluido discard) y agentes ISPConfig: comprobación de claves expuestas, nombres con guion y conservación de reglas MX/FILTER, MySQL, SASL y relay.
 - Configuración privada preservada en contenido, inode, mtime y permisos; variables nuevas solo notificadas y configuración desaparecida no regenerada durante upgrade.
 - Actualización mediante el código real del release público 1.0.0, ejecutada sin red con sus assets de prueba y el paquete nuevo.
+- Calentamiento solo informativo (probe real de Monit devuelve 0), sin esconder ataques ni errores.
+- Fechas locales CET/CEST y UTC, preservando los valores internos de máquina.
+- Ayuda con comandos explicados y guía práctica de incidencias.
+- Enlaces de comando absolutos, relativos, encadenados y buscados por PATH, con configuración predeterminada desde otro directorio.
+- Cambio de plantilla systemd durante upgrade, conservación de ExecStart/drop-ins/unidades personalizadas y restauración ante fallo de daemon-reload.
 - Consulta de release estable, versión ya actualizada, checksum erróneo, fallo de preparación y fallo de arranque sin rebobinar acciones.
 
 El cambio de contraseña contra la base ISPConfig real y el reinicio del Monit de destino forman parte de la validación de despliegue, no de los resultados simulados.
@@ -93,15 +98,15 @@ El cambio de contraseña contra la base ISPConfig real y el reinicio del Monit d
 
 Fecha de la distribución estable: **2026-10-30**.
 
-Resultado actual: [TEST_RESULTS_1.0.1.json](TEST_RESULTS_1.0.1.json). Se conservan los de [1.0.0](TEST_RESULTS_1.0.0.json), [0.3.0](TEST_RESULTS_0.3.0.json), [0.2.0](TEST_RESULTS_0.2.0.json), [0.1.1](TEST_RESULTS_0.1.1.json) y [0.1.0](TEST_RESULTS.json).
+Resultado actual: [TEST_RESULTS_1.0.2.json](TEST_RESULTS_1.0.2.json). Se conservan los de [1.0.1](TEST_RESULTS_1.0.1.json), [1.0.0](TEST_RESULTS_1.0.0.json), [0.3.0](TEST_RESULTS_0.3.0.json), [0.2.0](TEST_RESULTS_0.2.0.json), [0.1.1](TEST_RESULTS_0.1.1.json) y [0.1.0](TEST_RESULTS.json).
 
 | Entorno | Resultado |
 |---|---|
-| Ubuntu Focal | 141 pruebas, correctas |
-| Ubuntu Jammy | 141 pruebas, correctas |
-| Ubuntu Noble | 141 pruebas, correctas |
-| Debian 11 | 141 pruebas, correctas |
-| Ubuntu 26.04 / Python 3.14 | 141 pruebas, correctas |
+| Ubuntu Focal | 153 pruebas, correctas |
+| Ubuntu Jammy | 153 pruebas, correctas |
+| Ubuntu Noble | 153 pruebas, correctas |
+| Debian 11 | 153 pruebas, correctas |
+| Ubuntu 26.04 / Python 3.14 | 153 pruebas, correctas |
 | Bash/ShellCheck local | Sin errores ni advertencias de nivel warning |
 
 ## Rendimiento con el log de referencia

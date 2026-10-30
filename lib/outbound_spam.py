@@ -30,7 +30,7 @@ from postfix_settings import restart_postfix
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
 TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
@@ -1153,7 +1153,7 @@ class Actions:
         lines = ["Incidente de abuso SMTP saliente #%d" % incident["id"],
                  "Servidor: " + os.uname().nodename, "Cuenta SASL: " + incident["account"],
                  "Destinatarios externos en la ventana: %d (limite %d / %d segundos)" % (incident["peak"], incident["maximum"], incident["period"]),
-                 "Fin de ventana (UTC): " + dt.datetime.fromtimestamp(incident["event_time"], dt.timezone.utc).isoformat(),
+                 "Fin de ventana (hora local): " + runtime.human_timestamp(incident["event_time"]),
                  "Se cuentan destinatarios aceptados, incluidos pendientes; no reintentos.",
                  "Limite base: %d; motivo: %s; externos con dominio remitente distinto: %d" %
                  (incident["base_maximum"] or incident["maximum"], incident["reason"], incident["foreign_recipients"]),
@@ -1272,8 +1272,6 @@ def coverage_issues(store, config, now):
     issues = []
     if store.get("recovery_pause"):
         issues.append(store.get("recovery_pause"))
-    if store.get("warm_until", 0) > now:
-        issues.append("ventana en calentamiento hasta " + dt.datetime.fromtimestamp(store.get("warm_until"), dt.timezone.utc).isoformat())
     for m in store.db.execute("SELECT m.qid,m.nrcpt,COUNT(r.address) AS known,SUM(CASE WHEN r.external IS NULL THEN 1 ELSE 0 END) AS unknown "
                               "FROM messages m LEFT JOIN recipients r ON r.mid=m.id WHERE m.accepted>=? "
                               "GROUP BY m.id HAVING (m.nrcpt IS NOT NULL AND COUNT(r.address)<m.nrcpt) OR "
@@ -1292,15 +1290,24 @@ def summarize(store, config, now, current, issues):
     held = store.db.execute("SELECT COUNT(*) FROM held").fetchone()[0]
     blocks = [r[0] for r in store.db.execute("SELECT account FROM blocks")]
     code = 2 if issues else (1 if incidents or held or blocks else 0)
+    until = store.get("warm_until", 0)
+    warming = until > now
+    local_until = runtime.human_timestamp(until) if warming else None
+    utc_until = dt.datetime.fromtimestamp(until, dt.timezone.utc).isoformat() if warming else None
+    info = ["ventana en calentamiento hasta " + local_until + " (hora local)"] if warming else []
     message = "Spam Status: %s; incidentes=%d; retenidos=%d; bloqueadas=%d" % (
-        "ERROR" if code == 2 else "ALERTA" if code == 1 else "OK", len(incidents), held, len(blocks))
+        "ERROR" if code == 2 else "ALERTA" if code == 1 else "CALENTAMIENTO" if warming else "OK", len(incidents), held, len(blocks))
     if incidents:
         message += "; " + ", ".join("%s: %d/%d en %ds" % (i["account"], i["peak"], i["maximum"], i["period"]) for i in incidents[:5])
     if issues:
         message += "; " + "; ".join(issues[:3])
+    if info:
+        message += "; " + "; ".join(info)
     return {"version": VERSION, "last_success": now, "stale_after": config["stale_after"],
+            "last_success_local": runtime.human_timestamp(now), "analysis_at_local": runtime.human_timestamp(now),
             "code": code, "message": message, "incidents": incidents, "held": held,
-            "blocked": blocks, "accounts": current, "issues": issues, "run_interval": config["run_interval"]}
+            "blocked": blocks, "accounts": current, "issues": issues, "run_interval": config["run_interval"],
+            "warming_up": warming, "warm_until_utc": utc_until, "warm_until_local": local_until, "info": info}
 
 
 def require_root():
@@ -1760,7 +1767,7 @@ def manage(store, config, commands, args, now):
             raise MonitorError("Resolución pendiente; se conserva la suspensión remota: " + "; ".join(errors))
         return "Falso positivo resuelto: retenciones propias liberadas, bloqueo remoto retirado e incidente reconocido. Revise límite/excepción si continúa el mismo volumen."
     if args.list_held:
-        return json.dumps([dict(r) for r in store.db.execute("SELECT qid,held_at,incident FROM held WHERE account=?", (account,))], indent=2)
+        return json.dumps(runtime.readable_dates([dict(r) for r in store.db.execute("SELECT qid,held_at,incident FROM held WHERE account=?", (account,))]), indent=2)
     if args.ack:
         store.db.execute("UPDATE incidents SET acked=? WHERE account=? AND acked IS NULL", (now, account))
         store.db.execute("INSERT OR REPLACE INTO acknowledgements VALUES (?,?)", (account, now))
@@ -1809,16 +1816,49 @@ def manage(store, config, commands, args, now):
 
 
 def cli():
-    p = argparse.ArgumentParser(description="Control incremental de abuso SMTP saliente (plan A).")
+    guide = """GUÍA RÁPIDA DE INCIDENCIAS
+  Revisar una alerta y sus retenciones:
+    outbound-spam.sh --status
+    outbound-spam.sh --list-held cuenta@example.org
+
+  Cuenta comprometida: suspender sus nuevos envíos externos y purgar lo pendiente:
+    outbound-spam.sh --block-user cuenta@example.org
+    outbound-spam.sh --purge-user-queue cuenta@example.org
+  La purga BORRA mensajes; conserva los locales/mixtos con locales pendientes.
+
+  Falso positivo: ajustar antes el límite/excepción en la configuración y resolver:
+    nano /root/scripts/outbound-spam.conf
+    outbound-spam.sh --resolve-user cuenta@example.org
+  Libera las retenciones propias, reconoce el incidente y retira el bloqueo remoto.
+
+  Decidir por separado el destino de mensajes retenidos:
+    outbound-spam.sh --release-held cuenta@example.org   # liberar, sin desbloquear
+    outbound-spam.sh --delete-held cuenta@example.org    # eliminar, irreversible
+    outbound-spam.sh --unblock cuenta@example.org        # permitir externos, sin liberar
+    outbound-spam.sh --ack cuenta@example.org            # reconocer, sin liberar/desbloquear
+
+  Instalar el servicio/monitor o actualizar el programa:
+    outbound-spam.sh --install-service
+    outbound-spam.sh --install-monit
+    outbound-spam.sh --upgrade
+
+  Los avisos de correo tienen mínimo 6 horas por cuenta. Detección y contención
+  siguen en cada pasada. El calentamiento es informativo y no hace fallar Monit.
+  Fechas de presentación: hora local del servidor. Estado e inventario: no borrar.
+"""
+    launcher = Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent)) / "outbound-spam.sh"
+    guide = guide.replace("outbound-spam.sh --", str(launcher) + " --")
+    p = argparse.ArgumentParser(prog="outbound-spam.sh", description="Control de spam saliente de cuentas SMTP autenticadas: log incremental y cola Postfix.",
+                                formatter_class=argparse.RawDescriptionHelpFormatter, epilog=guide)
     p.add_argument("--version", action="version", version=VERSION)
     p.add_argument("--config-fd", type=int, help=argparse.SUPPRESS)
-    p.add_argument("--config", "-c", "--config-path", dest="config_path", default=str(Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent)) / "outbound-spam.conf"), help="Archivo Bash de configuración")
-    p.add_argument("--state-dir", help="Directorio aislado de estado, obligatorio para replay")
+    p.add_argument("--config", "-c", "--config-path", dest="config_path", default=str(Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent)) / "outbound-spam.conf"), help="Archivo Bash privado (0600); se recarga y conserva al actualizar")
+    p.add_argument("--state-dir", help="Ruta de estado de esta instancia; en replay debe ser distinta de la operativa")
     p.add_argument("--now", type=float, help="Reloj UNIX de referencia; solo replay")
     p.add_argument("--local-domain", action="append", default=[], help="Dominio local adicional; solo replay")
     p.add_argument("--from-start", action="store_true", help="Leer desde principio al crear el cursor")
     p.add_argument("--quiet", action="store_true", help="No imprimir resumen si se ejecuta correctamente")
-    p.add_argument("--max-sent", type=int, help="Máximo de destinatarios externos por cuenta")
+    p.add_argument("--max-sent", type=int, help="Máximo de destinatarios externos por cuenta; sin otra operación guarda/aplica ajustes")
     p.add_argument("--time-period", type=int, help="Ventana de detección en segundos")
     p.add_argument("--outbound-delay", help="Freno global SMTP: auto, 0s, 1s, 4s...; solo configuración")
     p.add_argument("--postfix-client-limit", type=int, help="Límite de recepción por IP; 0 preserva local/NAT")
@@ -1831,23 +1871,33 @@ def cli():
     mode = p.add_mutually_exclusive_group(required=False)
     mode.add_argument("--set-limits", action="store_true", help="Guardar límites, ajustar main.cf y reiniciar su instancia")
     mode.add_argument("--configure-postfix", action="store_true", help="Instalar/actualizar el bloque Ratelimits coordinado")
-    mode.add_argument("--run", action="store_true")
+    mode.add_argument("--run", action="store_true", help="Leer lo nuevo, evaluar límites y ejecutar las acciones habilitadas una vez")
     mode.add_argument("--daemon", action="store_true", help="Proceso del servicio systemd; espera entre pasadas completas")
-    mode.add_argument("--upgrade", action="store_true", help="Actualizar a la última versión estable del repositorio público")
+    mode.add_argument("--upgrade", action="store_true", help="Descargar/verificar el release estable; conservar config/estado y actualizar unidad propia intacta")
     mode.add_argument("--prepare-upgrade", action="store_true", help=argparse.SUPPRESS)
-    mode.add_argument("--install-service", action="store_true")
-    mode.add_argument("--uninstall-service", action="store_true")
+    mode.add_argument("--install-service", action="store_true", help="Crear/habilitar/iniciar la unidad systemd y retirar el cron propio")
+    mode.add_argument("--uninstall-service", action="store_true", help="Detener y retirar la unidad, conservando datos, bloqueos y HOLD")
     mode.add_argument("--replay", metavar="LOG", help="Análisis offline aislado, sin órdenes Postfix/SQL ni notificaciones")
-    mode.add_argument("--status", action="store_true")
+    mode.add_argument("--status", action="store_true", help="Mostrar estado y fechas locales: código 0 sano/calentamiento, 1 alerta, 2 error")
     mode.add_argument("--doctor", action="store_true", help="Comprobar dependencias y configuración, sin acciones de contención")
-    mode.add_argument("--install-monit", action="store_true")
-    mode.add_argument("--uninstall-monit", action="store_true")
-    mode.add_argument("--install-postfix-guard", action="store_true")
-    mode.add_argument("--uninstall-postfix-guard", action="store_true")
-    mode.add_argument("--install-cron", action="store_true")
-    mode.add_argument("--uninstall-cron", action="store_true")
-    for option in ("list-held", "release-held", "delete-held", "unblock", "ack", "purge-user-queue", "resolve-user", "block-user"):
-        mode.add_argument("--" + option, metavar="CUENTA")
+    mode.add_argument("--install-monit", action="store_true", help="Instalar Spam_Status, validar y reiniciar Monit")
+    mode.add_argument("--uninstall-monit", action="store_true", help="Retirar solo el monitor Spam_Status y su comprobador")
+    mode.add_argument("--install-postfix-guard", action="store_true", help="Instalar/migrar el bloqueo por SASL/destinatario; validar y reiniciar Postfix")
+    mode.add_argument("--uninstall-postfix-guard", action="store_true", help="Restaurar restricciones anteriores; requiere no tener cuentas bloqueadas")
+    mode.add_argument("--install-cron", action="store_true", help="Programación cron antigua; incompatible con la unidad gestionada instalada")
+    mode.add_argument("--uninstall-cron", action="store_true", help="Eliminar únicamente el archivo cron gestionado por esta aplicación")
+    operations = {
+        "list-held": "Listar los mensajes que el monitor tiene registrados como HOLD de la cuenta",
+        "release-held": "Liberar/reencolar retenciones propias; conservar bloqueo e incidente",
+        "delete-held": "Borrar irreversiblemente las retenciones propias verificadas",
+        "unblock": "Retirar el bloqueo externo; no libera HOLD ni reconoce el incidente",
+        "ack": "Reconocer el incidente; no desbloquea ni libera mensajes",
+        "purge-user-queue": "Borrar salida externa verificada en active/deferred/hold; no bloquea nuevos envíos",
+        "resolve-user": "Resolver falso positivo: cancelar acciones, liberar HOLD propio, reconocer y desbloquear",
+        "block-user": "Suspender nuevos destinatarios externos de la cuenta; requiere guard instalado",
+    }
+    for option, explanation in operations.items():
+        mode.add_argument("--" + option, metavar="CUENTA", help=explanation)
     args = p.parse_args()
     selected = any(getattr(args, k) for k in ("run", "daemon", "upgrade", "prepare_upgrade", "install_service", "uninstall_service", "replay", "status", "doctor", "install_monit", "uninstall_monit", "install_postfix_guard",
                    "uninstall_postfix_guard", "install_cron", "uninstall_cron", "list_held", "release_held", "delete_held", "unblock", "ack", "set_limits", "configure_postfix", "purge_user_queue", "resolve_user", "block_user"))
@@ -1995,7 +2045,7 @@ def main():
             if age < -60 or age > status["stale_after"]:
                 status["code"] = 2
                 status["message"] = "Spam Status: ERROR: analizador atrasado o reloj incoherente"
-            print(json.dumps(status, ensure_ascii=False, indent=2))
+            print(json.dumps(runtime.readable_dates(status), ensure_ascii=False, indent=2))
             return status["code"]
         recovery = None if args.replay else Recovery(directory, config, atomic_write)
         state_valid = True
@@ -2037,6 +2087,9 @@ def main():
                 summary = summarize(store, config, now, old, coverage_issues(store, config, now))
                 # No simular una ejecución correcta del analizador al administrar un incidente.
                 summary["last_success"] = store.get("last_success", 0)
+                summary["last_success_local"] = runtime.human_timestamp(summary["last_success"]) if summary["last_success"] else None
+                summary["analysis_at"] = store.get("analysis_at", summary["last_success"])
+                summary["analysis_at_local"] = runtime.human_timestamp(summary["analysis_at"]) if summary["analysis_at"] else None
                 atomic_write(directory / "status.json", json.dumps(summary, ensure_ascii=False, indent=2))
             else:
                 started = time.monotonic()
@@ -2053,6 +2106,7 @@ def main():
                         router = Router(config, commands)
                         queue = None if args.replay else Queue(config, commands)
                         issues = resolve_recipients(store, config, router, queue, bootstrap=first and not args.replay)
+                        issues.extend(reader.notes)
                         if config_warning:
                             issues.append(config_warning)
                         if recovery and recovery.note:
@@ -2061,6 +2115,7 @@ def main():
                             now = time.time()
                         current, opened = evaluate(store, config, now, offline=bool(args.replay))
                         store.set("current", current)
+                        store.set("analysis_at", now)
                         if reader.backlog:
                             issues.append("pendiente de leer log: se alcanzó max_read_bytes")
                         store.set("last_success", now)
@@ -2075,6 +2130,7 @@ def main():
                     summary["analysis_at"] = now
                     if not args.replay:
                         summary["last_success"] = time.time()
+                        summary["last_success_local"] = runtime.human_timestamp(summary["last_success"])
                         store.set("last_success", summary["last_success"])
                         store.db.commit()
                     summary["metrics"] = {"bytes_read": reader.bytes, "lines_read": log_parser.lines,
@@ -2085,7 +2141,7 @@ def main():
                     with store.db:
                         store.db.execute("DELETE FROM messages WHERE removed=1 AND created<?", (now - config["retention_days"] * 86400,))
                     if not args.quiet:
-                        print(json.dumps(summary, ensure_ascii=False, indent=2))
+                        print(json.dumps(runtime.readable_dates(summary), ensure_ascii=False, indent=2))
                     elif summary["code"] == 2:
                         print(summary["message"], file=sys.stderr)
                     if recovery:

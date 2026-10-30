@@ -119,6 +119,8 @@ La operación guarda los límites, crea/actualiza un bloque Ratelimits delimitad
 
 Por defecto, `initial_position=end` comienza al final de `mail.log` y reconstruye las cuentas autenticadas que aún están en la cola. Monit indicará calentamiento hasta haber cubierto la ventana máxima: faltan los mensajes ya entregados antes de arrancar.
 
+Desde 1.0.2 ese calentamiento se muestra con código correcto (0), fecha humana y zona local. No impide analizar/actuar sobre los datos disponibles ni oculta un incidente real.
+
 Para comenzar por el principio del fichero actual al crear un estado nuevo:
 
 ```bash

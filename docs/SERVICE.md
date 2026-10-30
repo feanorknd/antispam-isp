@@ -46,6 +46,28 @@ SIGTERM impide una nueva pasada y permite terminar la actual. `KillMode=mixed` y
 
 `service-status.json` es un diagnóstico local del proceso y su trabajador, no un gestor de procesos externo. La supervisión de arranque/parada corresponde a systemd; Monit consulta el resumen de spam y su antigüedad.
 
+## Unidad y upgrade
+
+El actualizador 1.0.2 actualiza el código y también la unidad propia intacta cuando la plantilla cambia, con copia previa y `daemon-reload`. Conserva la línea `ExecStart`, los drop-ins y si la unidad estaba parada: no habilita ni arranca servicios que no lo estuvieran. Un archivo base modificado manualmente se conserva y el resultado incluye `service_unit_note`. Las unidades no instaladas no se crean como efecto de un upgrade.
+
+El paso 1.0.1 → 1.0.2 todavía lo despliega el actualizador antiguo. El código del servicio se renueva y su unidad sigue siendo válida porque esta versión no cambia su contenido operativo. Para regenerarla expresamente existe `--install-service`.
+
+## Calentamiento y fechas
+
+La ventana inicial se presenta como `CALENTAMIENTO`, con código 0 si no hay otra incidencia; Monit no alerta por ese motivo. Un ataque sigue devolviendo 1 y un error real 2, incluso durante el calentamiento. La salida muestra la hora local y su zona/offset. Las fechas numéricas del archivo de estado son internas para los cálculos del comprobador; `--status` las presenta en formato humano.
+
+## Comando desde cualquier directorio
+
+El lanzador resuelve enlaces simbólicos absolutos, relativos y encadenados antes de buscar código/configuración. Puede usarse un enlace como:
+
+```bash
+ln -s /root/scripts/outbound-spam.sh /usr/local/sbin/outbound-spam
+outbound-spam --status
+outbound-spam --help
+```
+
+Si el enlace ya existe apuntando al lanzador estable, basta con actualizar el programa. Para actualizar un lanzador antiguo que aún falla al resolver enlaces, usar la ruta absoluta `/root/scripts/outbound-spam.sh --upgrade`. No apuntar al código de una versión concreta dentro de `releases/`, sino al lanzador estable.
+
 ## Editar con nano
 
 ```bash

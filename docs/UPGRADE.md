@@ -2,16 +2,16 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-## Instalación nueva desde el release 1.0.1
+## Instalación nueva desde el release 1.0.2
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.1/antispam-isp-1.0.1.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.1/SHA256SUMS
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.2/antispam-isp-1.0.2.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.2/SHA256SUMS
 sha256sum -c SHA256SUMS
-tar -xzf antispam-isp-1.0.1.tar.gz
-sudo ./antispam-isp-1.0.1/install.sh --install-deps
+tar -xzf antispam-isp-1.0.2.tar.gz
+sudo ./antispam-isp-1.0.2/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
@@ -50,6 +50,10 @@ Cuando hay una versión más moderna:
 6. Activa la versión completa mediante un cambio atómico de `current` y actualiza los puntos de entrada propios.
 7. Vuelve a iniciar el servicio únicamente si estaba activo.
 
+Desde el actualizador 1.0.2 se revisa también la definición systemd existente. Una unidad propia intacta se actualiza con la plantilla del candidato si declara `service_unit_api=1`; se guarda su copia y se ejecuta `daemon-reload`. Se preservan `ExecStart` (incluidos config/ruta de estado), el estado parado/activo y los archivos `.service.d/`. Una unidad base personalizada se conserva y se informa de ello. Si falla `daemon-reload` antes del arranque nuevo se restaura la definición anterior junto con código/estado.
+
+La primera actualización lanzada desde 1.0.1 utiliza el actualizador anterior, que ya sustituye el código y reanuda la unidad activa. La plantilla de 1.0.2 conserva el mismo contenido operativo de aquella unidad, por lo que no necesita cambios funcionales. Puede sincronizarse expresamente con `--install-service`; las siguientes actualizaciones realizadas por 1.0.2 incorporan la revisión automática descrita.
+
 La configuración operativa se conserva byte por byte, sin cambiar su inode, fecha de modificación ni permisos. Tampoco se añaden automáticamente variables. Si el ejemplo nuevo incorpora nombres ausentes tanto en el ejemplo anterior como en la configuración privada, se notifican en `missing_new_variables` para revisión; esta detección de asignaciones Bash es orientativa y no ejecuta el archivo privado.
 
 Una actualización no regenera una configuración desaparecida: se cancela antes de cambiar el programa. En una instalación nueva solo se crea la configuración si no existía. También se conservan el estado, reservas de avisos, retenciones, bloqueos, configuración de Postfix y decisiones de relay. Se actualiza el ejemplo y, si existe, el comprobador Monit gestionado.
@@ -61,8 +65,8 @@ Una actualización no regenera una configuración desaparecida: se cancela antes
 /root/scripts/outbound-spam.conf
 /root/scripts/outbound-spam-status.sh
 /root/scripts/outbound-spam.conf.example
-/root/scripts/.antispam/current -> releases/1.0.1
-/root/scripts/.antispam/releases/1.0.1/
+/root/scripts/.antispam/current -> releases/1.0.2
+/root/scripts/.antispam/releases/1.0.2/
 /root/scripts/.antispam/installation.json
 ```
 

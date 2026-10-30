@@ -1,0 +1,25 @@
+{
+  "application_version": "1.0.2",
+  "schema_version": 3,
+  "date": "2026-10-30",
+  "matrix": [
+    {"image": "ubuntu:focal", "postfix": "3.4.13", "tests": 153, "result": "passed"},
+    {"image": "debian:bullseye", "postfix": "3.5.25", "tests": 153, "result": "passed"},
+    {"image": "ubuntu:jammy", "postfix": "3.6.4", "tests": 153, "result": "passed"},
+    {"image": "ubuntu:noble", "postfix": "3.8.6", "tests": 153, "result": "passed"},
+    {"image": "ubuntu:26.04", "postfix": "3.10.6", "tests": 153, "result": "passed"}
+  ],
+  "new_checks": [
+    "warmup exits zero through real Monit probe",
+    "actual incident and operational error remain nonzero during warmup",
+    "local dates, DST and numeric internal state compatibility",
+    "complete help with incident response examples",
+    "installed command through absolute, relative, chained and PATH symlinks from another cwd",
+    "managed systemd template updated and daemon-reload performed",
+    "custom base units and drop-ins preserved",
+    "inactive units not started or enabled",
+    "unit restored after failed daemon-reload"
+  ],
+  "systemctl_commands": "simulated; unit syntax, Postfix and daemon process execute natively",
+  "private_test_sources": "excluded from public Git and installation assets"
+}
