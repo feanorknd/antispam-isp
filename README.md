@@ -63,6 +63,8 @@ Empezar por [docs/README.md](docs/README.md) y [la instalación](docs/INSTALLATI
 python3 tools/build_release.py --output dist
 ```
 
+Para reproducir el asset publicado de una versión, construir desde su etiqueta (`v1.0.0`), que fija también la documentación. `main` puede contener anotaciones posteriores a la publicación.
+
 Las pruebas y fixtures permanecen en el entorno local de validación, excluidos de la publicación. Sus resultados y metodología están en [docs/TESTS.md](docs/TESTS.md).
 
 Repositorio público: [feanorknd/antispam-isp](https://github.com/feanorknd/antispam-isp). `.gitignore` excluye `tests/`, `etc/`, `var/`, la configuración operativa, cachés, bases de datos, estados y artefactos de construcción.

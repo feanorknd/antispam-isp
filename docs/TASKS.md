@@ -44,10 +44,13 @@ Actualizado: **2026-10-30**, versión 1.0.0.
 - [x] Preparar instalador, paquete reproducible con checksums y actualizador de releases públicos.
 - [x] Excluir pruebas, configuración y referencias privadas de la publicación.
 - [x] Verificar 133 pruebas en las cinco distribuciones y una preparación real de actualización.
+- [x] Subir el código a `git@github.com:feanorknd/antispam-isp.git` y etiquetar `v1.0.0`.
+- [x] Publicar el release estable 1.0.0 con paquete instalable y `SHA256SUMS`.
+- [x] Verificar la API y la descarga públicas sin autenticación, con coincidencia del SHA-256.
 
 ## En ejecución
 
-- [ ] Verificación final y publicación del release 1.0.0 en GitHub.
+Ninguna tarea de desarrollo/publicación en ejecución al cerrar 1.0.0. Release: https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.0 . Las tareas de despliegue real figuran abajo.
 
 ## Programadas por el software, al instalarlo en el servidor
 
