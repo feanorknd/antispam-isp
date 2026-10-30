@@ -23,5 +23,13 @@
   ],
   "systemctl_commands": "simulated; unit syntax and daemon execution validated natively",
   "github_network_in_tests": false,
+  "post_publication_check": {
+    "release_version": "1.0.0",
+    "release_replaced": true,
+    "unauthenticated_download": "passed",
+    "published_installer_packages": ["postfix-sqlite"],
+    "install_recommends": false,
+    "archive_sha256": "562da782c4ba130caabb3a7d8be652c107c947b3313118ffb787467e3262b3d2"
+  },
   "test_sources": "kept in local validation workspace, excluded from public Git and release"
 }

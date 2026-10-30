@@ -48,10 +48,11 @@ Actualizado: **2026-10-30**, versión 1.0.0.
 - [x] Publicar el release estable 1.0.0 con paquete instalable y `SHA256SUMS`.
 - [x] Verificar la API y la descarga públicas sin autenticación, con coincidencia del SHA-256.
 - [x] Limitar `--install-deps` a `postfix-sqlite` sin recomendaciones, requiriendo Python y Postfix preinstalados.
+- [x] Eliminar y recrear el release y la etiqueta 1.0.0 con el instalador corregido; verificar el archivo público.
 
 ## En ejecución
 
-- [ ] Sustituir el release 1.0.0 por el instalador limitado a postfix-sqlite y verificar su descarga.
+Ninguna tarea de publicación pendiente. Release 1.0.0 reemplazado y verificado: https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.0 .
 
 ## Programadas por el software, al instalarlo en el servidor
 
