@@ -21,6 +21,12 @@
     "actual public 1.0.0 updater installs patch using inherited operation lock"
   ],
   "published_config_fixture": false,
+  "post_publication_check": {
+    "public_update_from": "1.0.0",
+    "latest_stable_version": "1.0.1",
+    "unauthenticated_download": "passed",
+    "archive_sha256": "0e839c1de56e17e48494ce74b3c8fcdaa7f01c0897eb8ae5761a5e4388cc7d61"
+  },
   "private_test_sources": "tests/ excluded from Git and installation assets",
   "systemctl_commands": "simulated; isolated Postfix restart and preparation execute natively"
 }

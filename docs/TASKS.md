@@ -53,10 +53,11 @@ Actualizado: **2026-10-30**, versión 1.0.1.
 - [x] Reconocer los transportes y parámetros disponibles de cada instalación sin asumir un master/main fijo.
 - [x] Verificar 141 pruebas por distribución y una actualización con el actualizador real 1.0.0.
 - [x] Preservar configuración privada sin reescritura/variables añadidas; notificar únicamente nuevos nombres ausentes.
+- [x] Publicar 1.0.1 y verificar API/paquete públicos para actualizar desde 1.0.0.
 
 ## En ejecución
 
-- [ ] Publicar y verificar el release 1.0.1 para aplicar la corrección mediante `--upgrade`.
+Ninguna tarea de publicación pendiente. Corrección disponible: https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.1 .
 
 ## Programadas por el software, al instalarlo en el servidor
 
