@@ -70,10 +70,11 @@ Actualizado: **2026-10-31**, versión 1.2.0.
 - [x] Validar entradas, prioridades, idempotencia, caché y restauración, con bloqueo y registro de resultados.
 - [x] Incorporar ambos comandos y ejemplos prácticos en la ayuda y la documentación.
 - [x] Verificar 176 pruebas en las cinco distribuciones, incluido el upgrade público desde 1.1.0 y el uso de los nuevos comandos en la instalación actualizada.
+- [x] Publicar 1.2.0 y comprobar descargas sin autenticación, checksums, manifiestos y descubrimiento con los actualizadores públicos 1.1.0 y 1.0.2.
 
 ## En ejecución
 
-Validación final y publicación de 1.2.0, con comprobación de paquetes públicos y compatibilidad del actualizador 1.1.0.
+Ninguna tarea de publicación pendiente. Release: https://github.com/feanorknd/antispam-isp/releases/tag/v1.2.0 .
 
 ## Programadas por el software, al instalarlo en el servidor
 
