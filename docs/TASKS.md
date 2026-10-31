@@ -60,10 +60,11 @@ Actualizado: **2026-10-30**, versión 1.0.2.
 - [x] Resolver enlaces simbólicos del comando desde cualquier directorio.
 - [x] Renovar unidades systemd propias intactas durante upgrade y preservar personalizaciones/estado parado.
 - [x] Verificar 153 pruebas en las cinco distribuciones, incluidos cambios de zona horaria.
+- [x] Publicar 1.0.2 y comprobar API/descarga públicas desde 1.0.1.
 
 ## En ejecución
 
-- [ ] Publicar y verificar 1.0.2.
+Ninguna tarea de publicación pendiente. Release: https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.2 .
 
 ## Programadas por el software, al instalarlo en el servidor
 

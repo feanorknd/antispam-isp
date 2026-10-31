@@ -21,5 +21,11 @@
     "unit restored after failed daemon-reload"
   ],
   "systemctl_commands": "simulated; unit syntax, Postfix and daemon process execute natively",
-  "private_test_sources": "excluded from public Git and installation assets"
+  "private_test_sources": "excluded from public Git and installation assets",
+  "post_publication_check": {
+    "public_update_from": "1.0.1",
+    "latest_stable_version": "1.0.2",
+    "unauthenticated_download": "passed",
+    "archive_sha256": "0d79cce9e309ba5eaf9b5d07444db7b93317c91a35195978bc316ff5fa4cbb7e"
+  }
 }
