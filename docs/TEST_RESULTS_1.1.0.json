@@ -25,5 +25,13 @@
   ],
   "systemctl_commands": "simulated; unit syntax, Postfix, Monit validator, daemon and logrotate execute natively",
   "private_test_sources": "excluded from public Git and installation assets",
-  "legacy_102_archive_sha256": "0d79cce9e309ba5eaf9b5d07444db7b93317c91a35195978bc316ff5fa4cbb7e"
+  "legacy_102_archive_sha256": "0d79cce9e309ba5eaf9b5d07444db7b93317c91a35195978bc316ff5fa4cbb7e",
+  "post_publication_check": {
+    "latest_stable_version": "1.1.0",
+    "public_upgrader_1.0.2_discovers_compatible_asset": "passed",
+    "unauthenticated_downloads_checksums_and_manifest_validation": "passed",
+    "already_current_1.1.0_has_no_update": "passed",
+    "outbound_spam_archive_sha256": "3d23bfc6811cf835b902ea7eb63287e1ac6d1ac7b0605500771f2fbe118ea636",
+    "compatibility_archive_sha256": "1e3e92da74c90422e1d217ebee38a35f8104cdcd0b7302ee0e1392874f5ecace"
+  }
 }

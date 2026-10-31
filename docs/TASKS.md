@@ -65,10 +65,11 @@ Actualizado: **2026-10-31**, versión 1.1.0.
 - [x] Migrar desde el actualizador real 1.0.2, con servicio activo/parado y discos distintos.
 - [x] Añadir logs privados manuales/de servicio y política semanal de logrotate.
 - [x] Validar 163 pruebas por distribución, incluyendo rotación real y rollback de rutas.
+- [x] Publicar 1.1.0 y verificar sin autenticación ambos paquetes, checksums y descubrimiento mediante el actualizador público 1.0.2.
 
 ## En ejecución
 
-Publicación de 1.1.0 y verificación del paquete público desde 1.0.2.
+Ninguna tarea de publicación pendiente. Release: https://github.com/feanorknd/antispam-isp/releases/tag/v1.1.0 .
 
 ## Programadas por el software, al instalarlo en el servidor
 
