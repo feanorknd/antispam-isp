@@ -163,7 +163,7 @@ Consulta el último release estable público, verifica el paquete y preserva con
 
 Mantener el directorio de estado: contiene correlaciones, incidentes, intenciones de acciones y propiedad de retenciones. Para copiar SQLite con el analizador en marcha, utilizar su copia consistente o detener temporalmente el servicio y copiar el directorio completo, incluidos WAL/SHM si existen.
 
-Desde 0.3.0 se conservan también los archivos de `recovery/` y la caché privada `outbound-spam.conf.last-good.json`. No restaurar el archivo SQLite aislado ignorando el diario crítico. Consultar [RECOVERY.md](RECOVERY.md).
+Desde 0.3.0 se conservan también los archivos de `recovery/` y la caché privada, situada desde 1.1.0 en `/var/lib/outbound-spam/outbound-spam.conf.last-good.json`. No restaurar el archivo SQLite aislado ignorando el diario crítico. Consultar [RECOVERY.md](RECOVERY.md).
 
 Para retirar únicamente la integración SMTP:
 

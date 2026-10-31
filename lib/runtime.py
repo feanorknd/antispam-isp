@@ -10,7 +10,92 @@ import re
 import signal
 import stat
 import subprocess
+import sys
 import time
+
+
+def data_root():
+    return Path(os.environ.get("OUTBOUND_SPAM_DATA", "/var/lib/outbound-spam")).absolute()
+
+
+def private_data():
+    directory = data_root()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    info = directory.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+        raise ValueError("Directorio privado inseguro: " + str(directory))
+    if os.geteuid() == 0:
+        for parent in directory.parents:
+            info = parent.lstat()
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+                raise ValueError("Ancestro de datos inseguro: " + str(parent))
+    return directory
+
+
+def config_cache(path):
+    path = Path(path).absolute()
+    # El nombre habitual queda exactamente como outbound-spam.conf.last-good.json.
+    return private_data() / (path.name + ".last-good.json")
+
+
+LOGROTATE = """/var/log/outbound-spam.log {
+        weekly
+        missingok
+        rotate 8
+        compress
+        delaycompress
+        notifempty
+        copytruncate
+        dateext
+}
+"""
+
+
+def log_path():
+    return Path(os.environ.get("OUTBOUND_SPAM_LOG", "/var/log/outbound-spam.log"))
+
+
+def open_log():
+    path = log_path()
+    # O_NOFOLLOW y validación antes de chmod: no seguir ni modificar archivos ajenos.
+    fd = os.open(str(path), os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_nlink != 1:
+        os.close(fd)
+        raise ValueError("Log inseguro: " + str(path))
+    os.fchmod(fd, 0o600)
+    return fd
+
+
+def install_logging(write_atomic):
+    os.close(open_log())
+    path = Path(os.environ.get("OUTBOUND_SPAM_LOGROTATE", "/etc/logrotate.d/outbound-spam"))
+    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise ValueError("Logrotate no debe ser un enlace: " + str(path))
+    write_atomic(path, LOGROTATE, 0o600)
+
+
+def audit(event, mode=None, **fields):
+    try:
+        _audit(event, mode, **fields)
+    except (OSError, ValueError) as exc:
+        # Un disco lleno/rotación fallida no debe convertir una contención hecha en fallida.
+        print("outbound-spam: no se puede escribir el log: " + str(exc), file=sys.stderr)
+
+
+def _audit(event, mode=None, **fields):
+    mode = mode or ("servicio" if os.environ.get("OUTBOUND_SPAM_SERVICE") == "1" else "manual")
+    record = dict(tipo=mode, pid=os.getpid(), evento=event, **fields)
+    line = human_timestamp(time.time()) + " " + json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
+    fd = open_log()
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        data = line.encode("utf-8")
+        while data:
+            data = data[os.write(fd, data):]
+    finally:
+        os.close(fd)
 
 
 DATE_FIELDS = {"last_success", "analysis_at", "created", "accepted", "opened", "event_time", "acked", "last_notice",
@@ -84,9 +169,15 @@ def stable_bytes(path, pause=time.sleep):
     raise ValueError("La configuración está cambiando durante la lectura")
 
 
-def load_config(path, base, parse, write_atomic):
+def load_config(path, base, parse, write_atomic, cache_path=None):
     path = Path(path).absolute()
-    cache = Path(str(path) + ".last-good.json")
+    cache = Path(cache_path) if cache_path is not None else config_cache(path)
+    legacy_cache = Path(str(path) + ".last-good.json")
+    if not cache.exists() and legacy_cache.exists():
+        check_private(legacy_cache)
+        saved = json.loads(legacy_cache.read_text())
+        if saved.get("path") == str(path):
+            write_atomic(cache, json.dumps(saved))
     try:
         content = stable_bytes(path)
         syntax = subprocess.run(["/bin/bash", "-n"], input=content, capture_output=True, timeout=10)
@@ -145,11 +236,13 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
             except BlockingIOError:
                 raise ValueError("Ya hay otro demonio para este estado")
             cycles = 0
+            audit("servicio_iniciado", mode="servicio", intervalo=config["run_interval"], estado=str(directory))
             while not stopping[0] and (max_cycles is None or cycles < max_cycles):
                 started = time.time()
                 command = ["/bin/bash", str(base / "outbound-spam.sh"), "--config", config_path,
                            "--state-dir", str(directory), "--run", "--quiet", "--lock-wait", str(config["lock_wait"])]
-                child = spawn(command)
+                environment = dict(os.environ, OUTBOUND_SPAM_SERVICE="1")
+                child = spawn(command) if spawn is not subprocess.Popen else spawn(command, env=environment)
                 last_heartbeat = float("-inf")
                 while True:
                     result = child.poll()
@@ -177,6 +270,7 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
                         while not stopping[0] and time.monotonic() < until:
                             time.sleep(min(0.2, max(0, until - time.monotonic())))
             write_atomic(directory / "service-status.json", json.dumps({"pid": os.getpid(), "heartbeat": time.time(), "active": False, "stopped": True}))
+            audit("servicio_detenido", mode="servicio", pasadas=cycles)
     finally:
         for sig, handler in old_handlers.items():
             signal.signal(sig, handler)

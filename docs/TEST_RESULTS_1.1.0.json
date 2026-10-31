@@ -1,0 +1,29 @@
+{
+  "application_version": "1.1.0",
+  "schema_version": 3,
+  "date": "2026-10-31",
+  "matrix": [
+    {"image": "ubuntu:focal", "python": "3.8.10", "postfix": "3.4.13", "tests": 163, "result": "passed"},
+    {"image": "debian:bullseye", "python": "3.9.2", "postfix": "3.5.25", "tests": 163, "result": "passed"},
+    {"image": "ubuntu:jammy", "python": "3.10.12", "postfix": "3.6.4", "tests": 163, "result": "passed"},
+    {"image": "ubuntu:noble", "python": "3.12.3", "postfix": "3.8.6", "tests": 163, "result": "passed"},
+    {"image": "ubuntu:26.04", "python": "3.14.4", "postfix": "3.10.6", "tests": 163, "result": "passed"}
+  ],
+  "new_checks": [
+    "fresh installation contains exactly four application entrypoints in scripts directory",
+    "private program data, versioned releases and last-good configuration in new data directory",
+    "legacy layout and cache migration with preservation of state and active service",
+    "rollback after preparation failure restores legacy paths and state",
+    "migration collisions preserve both trees",
+    "actual public 1.0.2 CLI and upgrader, active and stopped service, no network",
+    "actual 1.0.2 migration across filesystems using a private tmpfs mount",
+    "public 1.0.0 updater compatibility",
+    "local timezone, manual/service origin, escaped single-line records and concurrent writers",
+    "action successes and failures without password hashes",
+    "reject log symlinks and hardlinks without changing the target",
+    "real logrotate copytruncate rotation preserves 0600 and subsequent logging"
+  ],
+  "systemctl_commands": "simulated; unit syntax, Postfix, Monit validator, daemon and logrotate execute natively",
+  "private_test_sources": "excluded from public Git and installation assets",
+  "legacy_102_archive_sha256": "0d79cce9e309ba5eaf9b5d07444db7b93317c91a35195978bc316ff5fa4cbb7e"
+}

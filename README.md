@@ -1,6 +1,6 @@
 # Outbound Spam Monitor
 
-Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.0.2**.
+Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.1.0**.
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
 
@@ -23,7 +23,7 @@ VERSION                       Versión de la distribución
 
 ## Instalación y actualización
 
-Descargar el paquete y `SHA256SUMS` del [release 1.0.2](https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.2), comprobar el checksum, extraer y ejecutar:
+Descargar `outbound-spam-1.1.0.tar.gz` y `SHA256SUMS` del [release 1.1.0](https://github.com/feanorknd/antispam-isp/releases/tag/v1.1.0), comprobar el checksum, extraer y ejecutar:
 
 ```bash
 sudo ./install.sh --install-deps
@@ -37,11 +37,11 @@ sudo /root/scripts/outbound-spam.sh --doctor
 sudo /root/scripts/outbound-spam.sh --upgrade
 ```
 
-El instalador conserva el archivo operativo y el estado. Las versiones completas se guardan bajo `.antispam/releases/` y se activan mediante `current`; el directorio `lib/` de otras utilidades del servidor se respeta. Véase [instalación y upgrade](docs/UPGRADE.md).
+El instalador conserva el archivo operativo y el estado. En `/root/scripts/` instala únicamente los dos scripts, la configuración privada y su ejemplo. Código, versiones, respaldos y última configuración válida se reúnen en `/var/lib/outbound-spam/`, con activación atómica mediante `current`. El upgrade migra automáticamente la distribución anterior y reanuda el servicio si estaba activo. Véase [instalación y upgrade](docs/UPGRADE.md).
 
 Las configuraciones existentes no se reescriben, ni se les añaden valores automáticamente. Las variables nuevas ausentes se notifican para revisión. 1.0.1 corrige la configuración de retrasos en servidores cuyo `master.cf` contiene `discard` y otros agentes específicos de ISPConfig.
 
-1.0.2 muestra calentamiento informativo sin error de Monit, fechas humanas en la zona del servidor y una guía práctica en `--help`. El lanzador admite enlaces simbólicos desde cualquier directorio. El upgrade actualiza las unidades systemd propias intactas cuando cambia su plantilla y conserva personalizaciones.
+1.1.0 añade un registro privado en `/var/log/outbound-spam.log`: hora local y zona del servidor, tipo manual/servicio, estado, incidencias y resultados de las acciones. El instalador configura rotación semanal con ocho copias en `/etc/logrotate.d/outbound-spam`. Detalles y ejemplos en [logs operativos](docs/LOGGING.md).
 
 ## Documentación
 
@@ -49,6 +49,7 @@ Empezar por [docs/README.md](docs/README.md) y [la instalación](docs/INSTALLATI
 
 - [Configuración](docs/CONFIGURATION.md)
 - [Operación y resolución de incidentes](docs/OPERATIONS.md)
+- [Logs operativos y rotación](docs/LOGGING.md)
 - [Diseño y límites del recuento](docs/ARCHITECTURE.md)
 - [Pruebas y rendimiento](docs/TESTS.md)
 - [Simulación de la semana del 18 al 25 de octubre](docs/SIMULATION_20261025.md)

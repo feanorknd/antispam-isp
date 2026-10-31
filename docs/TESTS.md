@@ -37,6 +37,8 @@ docker run --rm --network none outbound-spam-tests:ubuntu26
 
 La construcción descarga paquetes. La ejecución no tiene acceso a red externa; el SMTP de prueba escucha solo en loopback del contenedor. Los datos de `etc/` y `var/` no se incorporan a las imágenes.
 
+Para incluir la migración entre discos, añadir a `docker run` las opciones `--tmpfs /migration-data:mode=0700 -e OUTBOUND_SPAM_CROSSFS=/migration-data`. Esta variante se ha utilizado en la matriz de 1.1.0. Las imágenes incluyen logrotate para validar la política y una rotación real.
+
 El entorno instala systemd para validar la unidad con `systemd-analyze verify`; los contenedores no arrancan systemd como PID 1. Se prueba de verdad el bucle `--daemon`, su primer trabajador y su cierre por SIGTERM; las llamadas de instalación a `systemctl` se comprueban mediante comandos simulados. Debian 11 utiliza también el archivo histórico de seguridad para mantener coherentes las dependencias de systemd.
 
 Para inspeccionar versiones:
@@ -91,22 +93,26 @@ docker run --rm --network none outbound-spam-tests:focal postconf -h mail_versio
 - Enlaces de comando absolutos, relativos, encadenados y buscados por PATH, con configuración predeterminada desde otro directorio.
 - Cambio de plantilla systemd durante upgrade, conservación de ExecStart/drop-ins/unidades personalizadas y restauración ante fallo de daemon-reload.
 - Consulta de release estable, versión ya actualizada, checksum erróneo, fallo de preparación y fallo de arranque sin rebobinar acciones.
+- Distribución 1.1.0 con cuatro puntos de entrada, datos/código privados en `/var/lib/outbound-spam/`, migración de caché y rollback de rutas.
+- Actualizador y CLI reales del release público 1.0.2 con servicio activo/parado; traslado entre sistemas de archivos diferentes mediante tmpfs privado.
+- Log con hora/zona del servidor, tipo manual/servicio, resultados de acciones, exclusión de hashes y entradas concurrentes íntegras.
+- Rechazo de enlaces simbólicos/duros en el log; validación y rotación real con logrotate, conservando 0600 y escritura posterior.
 
 El cambio de contraseña contra la base ISPConfig real y el reinicio del Monit de destino forman parte de la validación de despliegue, no de los resultados simulados.
 
 ## Resultado registrado
 
-Fecha de la distribución estable: **2026-10-30**.
+Fecha de validación de la distribución: **2026-10-31**.
 
-Resultado actual: [TEST_RESULTS_1.0.2.json](TEST_RESULTS_1.0.2.json). Se conservan los de [1.0.1](TEST_RESULTS_1.0.1.json), [1.0.0](TEST_RESULTS_1.0.0.json), [0.3.0](TEST_RESULTS_0.3.0.json), [0.2.0](TEST_RESULTS_0.2.0.json), [0.1.1](TEST_RESULTS_0.1.1.json) y [0.1.0](TEST_RESULTS.json).
+Resultado actual: [TEST_RESULTS_1.1.0.json](TEST_RESULTS_1.1.0.json). Se conservan los de [1.0.2](TEST_RESULTS_1.0.2.json), [1.0.1](TEST_RESULTS_1.0.1.json), [1.0.0](TEST_RESULTS_1.0.0.json), [0.3.0](TEST_RESULTS_0.3.0.json), [0.2.0](TEST_RESULTS_0.2.0.json), [0.1.1](TEST_RESULTS_0.1.1.json) y [0.1.0](TEST_RESULTS.json).
 
 | Entorno | Resultado |
 |---|---|
-| Ubuntu Focal | 153 pruebas, correctas |
-| Ubuntu Jammy | 153 pruebas, correctas |
-| Ubuntu Noble | 153 pruebas, correctas |
-| Debian 11 | 153 pruebas, correctas |
-| Ubuntu 26.04 / Python 3.14 | 153 pruebas, correctas |
+| Ubuntu Focal | 163 pruebas, correctas |
+| Ubuntu Jammy | 163 pruebas, correctas |
+| Ubuntu Noble | 163 pruebas, correctas |
+| Debian 11 | 163 pruebas, correctas |
+| Ubuntu 26.04 / Python 3.14 | 163 pruebas, correctas |
 | Bash/ShellCheck local | Sin errores ni advertencias de nivel warning |
 
 ## Rendimiento con el log de referencia

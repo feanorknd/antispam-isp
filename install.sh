@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Instalador del paquete antispam-isp. La configuración operativa se conserva.
+# Instalador de outbound-spam. La configuración operativa se conserva.
 set -euo pipefail
 umask 077
 base_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)

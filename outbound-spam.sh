@@ -13,7 +13,13 @@ while [[ -L "$script_path" ]]; do
 done
 base_dir=$(CDPATH='' cd -- "$(dirname -- "$script_path")" && pwd -P)
 export OUTBOUND_SPAM_BASE="$base_dir"
-if [[ -f "$base_dir/.antispam/current/lib/outbound_spam.py" ]]; then
+data_dir=${OUTBOUND_SPAM_DATA:-/var/lib/outbound-spam}
+if [[ -f "$base_dir/lib/outbound_spam.py" && ( -f "$base_dir/RELEASE.json" || -d "$base_dir/.git" ) ]]; then
+    code_dir=$base_dir
+elif [[ -f "$data_dir/current/lib/outbound_spam.py" ]]; then
+    code_dir=$(CDPATH='' cd -- "$data_dir/current" && pwd -P)
+elif [[ -f "$base_dir/.antispam/current/lib/outbound_spam.py" ]]; then
+    # Entrada transitoria para completar actualizaciones lanzadas por 1.0.x.
     code_dir=$(CDPATH='' cd -- "$base_dir/.antispam/current" && pwd -P)
 else
     code_dir=$base_dir

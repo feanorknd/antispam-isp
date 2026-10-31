@@ -76,7 +76,9 @@ nano /root/scripts/outbound-spam.conf
 
 Cada pasada obtiene una instantánea estable del archivo, comprueba sintaxis Bash y valida valores/permisos. No modifica su política a mitad de una operación. Los guardados en sitio y los que sustituyen el inode están contemplados.
 
-Una configuración válida se conserva en `outbound-spam.conf.last-good.json`, propiedad de root y modo 0600. Si durante un guardado aparece un archivo vacío, cambiante, incompleto o inválido, se utiliza la última configuración validada y se informa del problema en Monit. Nunca se activan silenciosamente los valores por defecto por leer un archivo temporalmente vacío.
+Una configuración válida se conserva en `/var/lib/outbound-spam/outbound-spam.conf.last-good.json`, propiedad de root y modo 0600. Si durante un guardado aparece un archivo vacío, cambiante, incompleto o inválido, se utiliza la última configuración validada y se informa del problema en Monit y en el log. Nunca se activan silenciosamente los valores por defecto por leer un archivo temporalmente vacío.
+
+Desde 1.1.0, el servicio y sus trabajadores escriben en `/var/log/outbound-spam.log` con tipo `servicio`: inicio/parada, estado por pasada y acciones ante incidencias. Los comandos administrativos usan tipo `manual`. El instalador configura la rotación semanal; véase [LOGGING.md](LOGGING.md).
 
 Los cambios válidos de límites, informes, excepciones y acciones se aplican a la siguiente pasada. `run_interval` se transmite al bucle al completar el trabajador. Guardar con nano **no reinicia Postfix**: para trasladar ajustes a `main.cf` se utiliza `--configure-postfix`.
 

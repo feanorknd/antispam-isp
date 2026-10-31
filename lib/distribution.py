@@ -19,6 +19,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import runtime
 
 PROJECT = "feanorknd/antispam-isp"
 LATEST = "https://api.github.com/repos/" + PROJECT + "/releases/latest"
@@ -146,13 +147,16 @@ def validate_tree(source, expected=None):
 
 
 def unpack(archive, destination, expected):
-    prefix = "antispam-isp-" + expected.lstrip("v")
+    prefixes = {name + expected.lstrip("v") for name in ("outbound-spam-", "antispam-isp-")}
+    prefix = None
     destination = Path(destination)
     total, seen = 0, set()
     with tarfile.open(archive, "r:gz") as tar:
         for member in tar:
             name = member.name.rstrip("/")
             parts = PurePosixPath(name).parts
+            if prefix is None and parts and parts[0] in prefixes:
+                prefix = parts[0]
             if not parts or name != PurePosixPath(name).as_posix() or parts[0] != prefix or any(p in ("..", ".") for p in parts) or "\\" in name or name.startswith("/") or name in seen:
                 raise ValueError("Ruta no permitida o duplicada en el archivo")
             seen.add(name)
@@ -183,10 +187,139 @@ def unpack(archive, destination, expected):
     return root
 
 
+def migrate_legacy(target, config_path):
+    """Traslado bajo los bloqueos de upgrade/operación; alias solo mientras acaba 1.0.x."""
+    target = Path(target)
+    legacy, root = target / ".antispam", runtime.private_data()
+    if not legacy.exists() or legacy.is_symlink():
+        return
+    protected_directory(legacy)
+    old_cache = Path(str(config_path) + ".last-good.json")
+    cache = runtime.config_cache(config_path)
+    if old_cache.exists() and not cache.exists():
+        runtime.check_private(old_cache)
+        write(cache, old_cache.read_text())
+    lock_info = (legacy / "upgrade.lock").stat()
+    names = [p.name for p in legacy.iterdir()]
+    for name in names:
+        if (root / name).exists() or (root / name).is_symlink():
+            raise ValueError("Conflicto al migrar almacenamiento: " + str(root / name))
+    marker = root / "layout-migration.json"
+    write(marker, json.dumps({"target": str(target), "config": str(config_path), "names": names}))
+    moved = []
+    try:
+        for name in names:
+            shutil.move(str(legacy / name), str(root / name))
+            moved.append(name)
+        legacy.rmdir()
+        legacy.symlink_to(root, target_is_directory=True)
+        sync_directory(target)
+    except Exception:
+        if legacy.is_symlink():
+            legacy.unlink()
+        legacy.mkdir(mode=0o700, exist_ok=True)
+        for name in reversed(moved):
+            shutil.move(str(root / name), str(legacy / name))
+        marker.unlink()
+        raise
+    runtime.audit("rutas_migradas", origen=str(legacy), destino=str(root))
+    new_info = (root / "upgrade.lock").stat()
+    if (lock_info.st_dev, lock_info.st_ino) != (new_info.st_dev, new_info.st_ino):
+        fd = os.open(str(root / "upgrade.lock"), os.O_RDWR | os.O_NOFOLLOW)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    return None
+
+
+def finish_legacy(target, success):
+    root, target = runtime.private_data(), Path(target)
+    marker = root / "layout-migration.json"
+    if not marker.exists():
+        return
+    saved = json.loads(marker.read_text())
+    if saved["target"] != str(target):
+        raise ValueError("La migración pendiente pertenece a otra instalación")
+    legacy = target / ".antispam"
+    if not legacy.is_symlink() or legacy.resolve() != root.resolve():
+        raise ValueError("Alias de transición inesperado")
+    if success:
+        old_cache = Path(saved["config"] + ".last-good.json")
+        if old_cache.exists():
+            runtime.check_private(old_cache)
+            old_cache.unlink()
+        legacy.unlink()
+        runtime.audit("migracion_completada", destino=str(root), alias_retirado=str(legacy))
+    else:
+        legacy.unlink()
+        legacy.mkdir(mode=0o700)
+        for name in saved["names"]:
+            if (root / name).exists() or (root / name).is_symlink():
+                shutil.move(str(root / name), str(legacy / name))
+        runtime.audit("migracion_restaurada", destino=str(legacy))
+    marker.unlink()
+    sync_directory(target)
+
+
+def legacy_prepare(code, config_path):
+    """Puente ejecutado por --prepare-upgrade del actualizador público 1.0.x."""
+    code = Path(code).absolute()
+    legacy = code.parent.parent
+    if legacy.name != ".antispam" or legacy.is_symlink() or not (legacy / "installation.json").is_file():
+        return
+    record = json.loads((legacy / "installation.json").read_text())
+    target = legacy.parent
+    if record.get("project") != PROJECT or record.get("target") != str(target):
+        raise ValueError("Instalación histórica no verificable")
+    runtime.install_logging(write)
+    runtime.audit("upgrade_historico_preparado", version_origen=record.get("version"), version_destino=code.name)
+    # Conservar el inode bloqueado incluso si /root y /var son sistemas de archivos distintos.
+    lock_fd = os.open(str(legacy / "upgrade.lock"), os.O_RDONLY | os.O_NOFOLLOW)
+    new_lock_fd = None
+    try:
+        new_lock_fd = migrate_legacy(target, config_path)
+        helper = runtime.data_root() / "releases" / code.name / "lib/distribution.py"
+        command = [sys.executable, str(helper), "finish-legacy", "--target", str(target), "--legacy-lock-fd", str(lock_fd),
+                   "--parent-pid", str(os.getppid())]
+        descriptors = (lock_fd,)
+        if new_lock_fd is not None:
+            command += ["--new-lock-fd", str(new_lock_fd)]
+            descriptors += (new_lock_fd,)
+        subprocess.Popen(command,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         pass_fds=descriptors, start_new_session=True)
+    except Exception:
+        finish_legacy(target, success=False)
+        raise
+    finally:
+        os.close(lock_fd)
+        if new_lock_fd is not None:
+            os.close(new_lock_fd)
+
+
+def wait_legacy(target, lock_fd, parent_pid):
+    root = runtime.private_data()
+    with os.fdopen(lock_fd) as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        # TemporaryDirectory del actualizador 1.0.x se elimina al salir de deploy.
+        while any(root.glob("download-*")):
+            try:
+                os.kill(parent_pid, 0)
+            except ProcessLookupError:
+                break
+            time.sleep(0.1)
+        record = json.loads((root / "installation.json").read_text())
+        success = version(record["version"]) >= (1, 1, 0)
+        finish_legacy(target, success)
+        if success:
+            config, commands = installed_context(root / "current", record["config"])
+            active = _service_active(config, commands)
+            runtime.audit("upgrade_historico_completado", version=record["version"], servicio_activo=active)
+
+
 def fetch(url, limit):
     if not url.startswith("https://"):
         raise ValueError("La descarga requiere HTTPS")
-    request = urllib.request.Request(url, headers={"User-Agent": "antispam-isp-upgrade", "Accept": "application/vnd.github+json"})
+    request = urllib.request.Request(url, headers={"User-Agent": "outbound-spam-upgrade", "Accept": "application/vnd.github+json"})
     try:
         with urllib.request.urlopen(request, timeout=45) as response:
             if not response.geturl().startswith("https://"):
@@ -208,7 +341,7 @@ def latest_release(current, downloader=fetch):
     number = tag[1:] if tag.startswith("v") else tag
     if version(number) <= version(current):
         return None
-    name = "antispam-isp-" + number + ".tar.gz"
+    name = "outbound-spam-" + number + ".tar.gz"
     assets = {a["name"]: a for a in release.get("assets", [])}
     if name not in assets or "SHA256SUMS" not in assets:
         raise ValueError("El release carece del paquete instalable o sus checksums")
@@ -222,7 +355,7 @@ def latest_release(current, downloader=fetch):
 
 
 def _copy_release(source, target, manifest):
-    root = target / ".antispam"
+    root = runtime.private_data()
     releases = root / "releases"
     releases.mkdir(mode=0o700, exist_ok=True)
     final = releases / manifest["version"]
@@ -250,7 +383,7 @@ def _copy_release(source, target, manifest):
 
 
 def _activate(target, release):
-    root = target / ".antispam"
+    root = runtime.private_data()
     link = root / (".current-" + secrets.token_hex(5))
     link.symlink_to("releases/" + release.name)
     os.replace(str(link), str(root / "current"))
@@ -276,7 +409,7 @@ def _snapshot_state(config, config_path, backup):
             shutil.copytree(str(path), str(backup / name), symlinks=True)
         elif path.exists():
             shutil.copy2(str(path), str(backup / name))
-    cache = Path(str(config_path) + ".last-good.json")
+    cache = runtime.config_cache(config_path)
     if cache.exists():
         shutil.copy2(str(cache), str(backup / "config.last-good.json"))
 
@@ -293,7 +426,7 @@ def _restore_state(config, config_path, backup):
             shutil.copytree(str(saved), str(current), symlinks=True)
         elif saved.exists():
             shutil.copy2(str(saved), str(current))
-    cache = Path(str(config_path) + ".last-good.json")
+    cache = runtime.config_cache(config_path)
     if (backup / "config.last-good.json").exists():
         shutil.copy2(str(backup / "config.last-good.json"), str(cache))
     elif cache.exists():
@@ -361,7 +494,7 @@ def service_update_plan(release, manifest, target, config, config_path, previous
         return dict(result, note="Unidad modificada manualmente: se conserva el archivo", sha256=old_hash)
     if manifest.get("service_unit_api") != 1:
         return dict(result, note="Release sin API de plantilla systemd: se conserva la unidad", sha256=old_hash)
-    spec = importlib.util.spec_from_file_location("antispam_candidate_runtime", release / "lib/runtime.py")
+    spec = importlib.util.spec_from_file_location("outbound_spam_candidate_runtime", release / "lib/runtime.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     rendered = module.render_service(config, target, str(config_path), exec_start=exec_lines[0])
@@ -376,7 +509,11 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
     if source == target:
         raise ValueError("Instale en una ruta distinta del paquete/repo de origen")
     manifest = validate_tree(source)
-    root = protected_directory(target / ".antispam", create=True)
+    root = runtime.private_data()
+    if (root / "installation.json").exists():
+        installed = json.loads((root / "installation.json").read_text())
+        if installed.get("project") != PROJECT or installed.get("target") != str(target):
+            raise ValueError("El almacenamiento pertenece a otra instalación")
     _owned_entrypoints(target, source)
     existing = (target / "outbound-spam.sh").exists()
     config_path = Path(config_path or target / "outbound-spam.conf").absolute()
@@ -394,25 +531,27 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
     new_variables = missing_new_variables(source, target, config_path) if config_path.exists() else []
     if existing and config is None:
         config, commands = installed_context(source, config_path)
-    with (root / "upgrade.lock").open("a") as upgrade_lock:
-        os.chmod(str(root / "upgrade.lock"), 0o600)
+    legacy = target / ".antispam"
+    lock_root = protected_directory(legacy) if legacy.exists() and not legacy.is_symlink() else root
+    with (lock_root / "upgrade.lock").open("a") as upgrade_lock:
+        os.chmod(str(lock_root / "upgrade.lock"), 0o600)
         try:
             fcntl.flock(upgrade_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise ValueError("Ya hay otra instalación/actualización en curso")
         was_active, started, changed, state_saved, unit_changed = False, False, False, False, False
         unit_before, unit_mode, unit_plan = None, None, None
-        old_link = os.readlink(str(root / "current")) if (root / "current").is_symlink() else None
-        if (root / "current").exists() and old_link is None:
+        old_link = os.readlink(str(lock_root / "current")) if (lock_root / "current").is_symlink() else None
+        if (lock_root / "current").exists() and old_link is None:
             raise ValueError("La ruta current no es un enlace gestionado")
         backup = root / ("upgrade-backup-%s-%s" % (time.strftime("%Y%m%d-%H%M%S%z"), secrets.token_hex(4)))
         backup.mkdir(mode=0o700)
         old_entries = {}
-        for name in ("outbound-spam.sh", "outbound-spam-status.sh", "outbound-spam.conf.example", ".antispam/installation.json"):
-            path = target / name
+        for name in ("outbound-spam.sh", "outbound-spam-status.sh", "outbound-spam.conf.example", "installation.json"):
+            path = lock_root / name if name == "installation.json" else target / name
             if path.exists():
                 old_entries[name] = (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
-        operation_lock = None
+        operation_lock, migration_lock = None, None
         try:
             if existing:
                 was_active = _service_active(config, commands)
@@ -439,9 +578,13 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                         time.sleep(0.1)
                 _snapshot_state(config, config_path, backup)
                 state_saved = True
+            if lock_root != root:
+                migration_lock = migrate_legacy(target, config_path)
+            runtime.install_logging(write)
+            runtime.audit("instalacion_inicio", operacion="upgrade" if existing else "install", version=manifest["version"], destino=str(target))
             release = _copy_release(source, target, manifest)
             if existing:
-                previous_installation = json.loads(old_entries.get(".antispam/installation.json", (b"{}", 0))[0])
+                previous_installation = json.loads(old_entries.get("installation.json", (b"{}", 0))[0])
                 unit_plan = service_update_plan(release, manifest, target, config, config_path, previous_installation)
                 if unit_plan["updated"]:
                     unit_path = Path(config["service_unit"])
@@ -474,12 +617,22 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                 # A partir de aquí el nuevo código puede ejecutar acciones. No rebobinar SQL.
                 started = True
                 commands.run("systemctl", ["start", Path(config["service_unit"]).name])
+            finish_legacy(target, success=True)
+            old_cache = Path(str(config_path) + ".last-good.json")
+            if old_cache.exists():
+                runtime.check_private(old_cache)
+                cache = runtime.config_cache(config_path)
+                if not cache.exists():
+                    write(cache, old_cache.read_text())
+                old_cache.unlink()
+            runtime.audit("instalacion_completada", version=manifest["version"], servicio_reiniciado=was_active, respaldo=str(backup))
             return {"version": manifest["version"], "target": str(target), "config": str(config_path),
                     "service_restarted": was_active, "backup": str(backup),
                     "config_preserved": config_existed, "config_created": not config_existed, "missing_new_variables": new_variables,
                     "service_unit_updated": bool(unit_plan and unit_plan["updated"]),
                     "service_unit_note": unit_plan["note"] if unit_plan else "Servicio no instalado"}
-        except Exception:
+        except Exception as exc:
+            runtime.audit("instalacion_error", error=str(exc), nuevo_servicio_iniciado=started, respaldo=str(backup))
             if not started:
                 if existing and state_saved:
                     _restore_state(config, config_path, backup)
@@ -490,8 +643,8 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                         os.replace(str(temp), str(root / "current"))
                     elif (root / "current").is_symlink():
                         (root / "current").unlink()
-                    for name in ("outbound-spam.sh", "outbound-spam-status.sh", "outbound-spam.conf.example", ".antispam/installation.json"):
-                        path = target / name
+                    for name in ("outbound-spam.sh", "outbound-spam-status.sh", "outbound-spam.conf.example", "installation.json"):
+                        path = root / name if name == "installation.json" else target / name
                         if name in old_entries:
                             value, mode = old_entries[name]
                             write(path, value.decode("utf-8"), mode)
@@ -500,6 +653,7 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                 if unit_changed:
                     write(Path(config["service_unit"]), unit_before, unit_mode)
                     commands.run("systemctl", ["daemon-reload"])
+                finish_legacy(target, success=False)
                 if was_active:
                     commands.run("systemctl", ["start", Path(config["service_unit"]).name])
             else:
@@ -508,6 +662,8 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
         finally:
             if operation_lock is not None:
                 operation_lock.close()
+            if migration_lock is not None:
+                os.close(migration_lock)
 
 
 def installed_context(source, config_path):
@@ -525,7 +681,7 @@ def installed_context(source, config_path):
 
 def upgrade(target, current, config_path, config, commands, downloader=fetch, preparer=_prepare):
     target = protected_directory(target)
-    record = target / ".antispam/installation.json"
+    record = runtime.data_root() / "installation.json"
     if not record.is_file() or record.is_symlink():
         raise ValueError("Instalación sin gestor de releases; ejecute primero install.sh de la distribución oficial")
     installation = json.loads(record.read_text())
@@ -535,7 +691,7 @@ def upgrade(target, current, config_path, config, commands, downloader=fetch, pr
     if release is None:
         return {"updated": False, "version": current, "message": "Ya está instalada la última versión estable"}
     number, name, urls = release
-    root = target / ".antispam"
+    root = runtime.private_data()
     with tempfile.TemporaryDirectory(prefix="download-", dir=str(root)) as folder:
         staging = Path(folder)
         checksums = downloader(urls["SHA256SUMS"], 65536).decode("ascii")
@@ -553,15 +709,25 @@ def upgrade(target, current, config_path, config, commands, downloader=fetch, pr
 
 
 def main():
-    p = argparse.ArgumentParser(description="Instalador del release antispam-isp")
-    p.add_argument("action", choices=["install"])
-    p.add_argument("--source", required=True, type=Path)
+    p = argparse.ArgumentParser(description="Instalador del release outbound-spam")
+    p.add_argument("action", choices=["install", "finish-legacy"])
+    p.add_argument("--source", type=Path)
     p.add_argument("--target", default="/root/scripts", type=Path)
     p.add_argument("--config", type=Path)
+    p.add_argument("--legacy-lock-fd", type=int)
+    p.add_argument("--new-lock-fd", type=int)
+    p.add_argument("--parent-pid", type=int)
     args = p.parse_args()
     if os.geteuid() != 0:
         p.error("La instalación requiere root")
     os.umask(0o077)
+    if args.action == "finish-legacy":
+        if args.legacy_lock_fd is None or args.parent_pid is None:
+            p.error("finish-legacy requiere descriptor del bloqueo histórico y PID del actualizador")
+        wait_legacy(args.target, args.legacy_lock_fd, args.parent_pid)
+        return
+    if args.source is None:
+        p.error("install requiere --source")
     print(json.dumps(deploy(args.source, args.target, args.config), ensure_ascii=False, indent=2))
     print("Configure %s; después ejecute --doctor y los instaladores de guard/servicio/Monit." % (args.config or args.target / "outbound-spam.conf"))
 
@@ -570,4 +736,5 @@ if __name__ == "__main__":
     try:
         main()
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+        runtime.audit("instalacion_error", error=str(exc))
         raise SystemExit("Instalación: " + str(exc))

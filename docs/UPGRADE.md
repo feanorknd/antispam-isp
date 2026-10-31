@@ -2,16 +2,16 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-## Instalación nueva desde el release 1.0.2
+## Instalación nueva desde el release 1.1.0
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.2/antispam-isp-1.0.2.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.0.2/SHA256SUMS
-sha256sum -c SHA256SUMS
-tar -xzf antispam-isp-1.0.2.tar.gz
-sudo ./antispam-isp-1.0.2/install.sh --install-deps
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.1.0/outbound-spam-1.1.0.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.1.0/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf outbound-spam-1.1.0.tar.gz
+sudo ./outbound-spam-1.1.0/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
@@ -52,7 +52,13 @@ Cuando hay una versión más moderna:
 
 Desde el actualizador 1.0.2 se revisa también la definición systemd existente. Una unidad propia intacta se actualiza con la plantilla del candidato si declara `service_unit_api=1`; se guarda su copia y se ejecuta `daemon-reload`. Se preservan `ExecStart` (incluidos config/ruta de estado), el estado parado/activo y los archivos `.service.d/`. Una unidad base personalizada se conserva y se informa de ello. Si falla `daemon-reload` antes del arranque nuevo se restaura la definición anterior junto con código/estado.
 
-La primera actualización lanzada desde 1.0.1 utiliza el actualizador anterior, que ya sustituye el código y reanuda la unidad activa. La plantilla de 1.0.2 conserva el mismo contenido operativo de aquella unidad, por lo que no necesita cambios funcionales. Puede sincronizarse expresamente con `--install-service`; las siguientes actualizaciones realizadas por 1.0.2 incorporan la revisión automática descrita.
+### Migración a 1.1.0 desde 1.0.x
+
+El primer upgrade utiliza todavía el actualizador instalado. Por ello se publica también `antispam-isp-1.1.0.tar.gz`, un paquete de compatibilidad con el mismo código y manifiesto que el principal. El repositorio de GitHub conserva su URL histórica; el nombre operativo del programa y del paquete principal es **outbound-spam**.
+
+La preparación de 1.1.0 traslada el almacenamiento de `/root/scripts/.antispam/` a `/var/lib/outbound-spam/`. Durante el cierre del actualizador antiguo se mantiene un alias transitorio; un finalizador privado espera su bloqueo y la limpieza de la descarga, y retira ese alias y la caché antigua automáticamente. Se registra `migracion_completada` en el log. El código nuevo y el servicio ya utilizan la ubicación nueva, incluso durante ese cierre. El traslado también contempla sistemas de archivos distintos para `/root` y `/var`.
+
+El instalador de 1.1.0 realiza la misma migración de forma síncrona cuando se ejecuta sobre una instalación anterior. Si falla antes de arrancar el nuevo servicio, restaura las rutas anteriores junto con el estado y los puntos de entrada.
 
 La configuración operativa se conserva byte por byte, sin cambiar su inode, fecha de modificación ni permisos. Tampoco se añaden automáticamente variables. Si el ejemplo nuevo incorpora nombres ausentes tanto en el ejemplo anterior como en la configuración privada, se notifican en `missing_new_variables` para revisión; esta detección de asignaciones Bash es orientativa y no ejecuta el archivo privado.
 
@@ -65,12 +71,24 @@ Una actualización no regenera una configuración desaparecida: se cancela antes
 /root/scripts/outbound-spam.conf
 /root/scripts/outbound-spam-status.sh
 /root/scripts/outbound-spam.conf.example
-/root/scripts/.antispam/current -> releases/1.0.2
-/root/scripts/.antispam/releases/1.0.2/
-/root/scripts/.antispam/installation.json
+/var/lib/outbound-spam/current -> releases/1.1.0
+/var/lib/outbound-spam/releases/1.1.0/
+/var/lib/outbound-spam/installation.json
+/var/lib/outbound-spam/upgrade.lock
+/var/lib/outbound-spam/upgrade-backup-*/
+/var/lib/outbound-spam/outbound-spam.conf.last-good.json
+/var/lib/outbound-spam/state.sqlite3
+/var/lib/outbound-spam/status.json
+/var/lib/outbound-spam/recovery/
+/var/log/outbound-spam.log
+/etc/logrotate.d/outbound-spam
 ```
 
 Los módulos y documentación están dentro de la versión instalada. El lanzador fija `OUTBOUND_SPAM_BASE` para la configuración y `OUTBOUND_SPAM_CODE` para usar un conjunto coherente de módulos. Se conservan las versiones anteriores y las copias de actualización.
+
+Directorios privados: root y modo 0700; scripts: 0700; configuración, estado, respaldos y log: 0600. La unidad systemd sigue ejecutándose como root y Monit conserva su comprobador gestionado. Los mapas de Postfix mantienen sus permisos específicos `root:postfix`/0640 en `/etc/postfix`, necesarios para las consultas del MTA. Los archivos ajenos presentes en el directorio de scripts se respetan. Un `state_dir` personalizado sigue siendo la ubicación del estado de esa instancia; el almacenamiento del programa y la caché están en `/var/lib/outbound-spam/`.
+
+Instalación y upgrade crean el log y su rotador. Véase [LOGGING.md](LOGGING.md).
 
 Una instalación plana anterior se convierte ejecutando `install.sh` del paquete nuevo. Se preserva el directorio `lib/` antiguo para no ocultar utilidades ajenas; el lanzador pasa a utilizar la distribución versionada. `--upgrade` requiere haber realizado esa instalación con gestor de releases.
 

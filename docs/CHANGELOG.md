@@ -1,5 +1,15 @@
 # Cambios efectuados
 
+## 1.1.0 — 2026-10-31
+
+- Almacenamiento del programa trasladado a `/var/lib/outbound-spam/`: versiones, enlace current, respaldos y gestor de actualizaciones.
+- Última configuración válida en `/var/lib/outbound-spam/outbound-spam.conf.last-good.json`; solo cuatro componentes de la aplicación en `/root/scripts/`.
+- Migración coordinada con servicios y rollback, compatible con los actualizadores públicos 1.0.x y con sistemas de archivos distintos.
+- Log privado `/var/log/outbound-spam.log`: hora/zona locales, tipo manual/servicio, estado por pasada, incidencias y resultados de acciones.
+- Política logrotate automática: semanal, ocho rotaciones, compresión diferida, copytruncate y fecha.
+- Paquete principal `outbound-spam-1.1.0.tar.gz` y asset histórico de compatibilidad; repositorio público conservado.
+- 163 pruebas por distribución, incluidos upgrade real desde 1.0.2, migración/rollback, permisos, concurrencia de logs y rotación real.
+
 ## 1.0.2 — 2026-10-30
 
 - Calentamiento informativo: código 0 en Monit y `--status` si no hay otra incidencia; ataques/errores reales mantienen sus códigos.

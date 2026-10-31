@@ -1,6 +1,6 @@
 # Tareas y programación
 
-Actualizado: **2026-10-30**, versión 1.0.2.
+Actualizado: **2026-10-31**, versión 1.1.0.
 
 ## Completadas
 
@@ -61,10 +61,14 @@ Actualizado: **2026-10-30**, versión 1.0.2.
 - [x] Renovar unidades systemd propias intactas durante upgrade y preservar personalizaciones/estado parado.
 - [x] Verificar 153 pruebas en las cinco distribuciones, incluidos cambios de zona horaria.
 - [x] Publicar 1.0.2 y comprobar API/descarga públicas desde 1.0.1.
+- [x] Reunir código, versiones, respaldos y última configuración válida en `/var/lib/outbound-spam/`.
+- [x] Migrar desde el actualizador real 1.0.2, con servicio activo/parado y discos distintos.
+- [x] Añadir logs privados manuales/de servicio y política semanal de logrotate.
+- [x] Validar 163 pruebas por distribución, incluyendo rotación real y rollback de rutas.
 
 ## En ejecución
 
-Ninguna tarea de publicación pendiente. Release: https://github.com/feanorknd/antispam-isp/releases/tag/v1.0.2 .
+Publicación de 1.1.0 y verificación del paquete público desde 1.0.2.
 
 ## Programadas por el software, al instalarlo en el servidor
 
@@ -80,6 +84,7 @@ Ninguna tarea de publicación pendiente. Release: https://github.com/feanorknd/a
 | Purga de correlaciones terminadas | Cada ejecución, según retención | Motor del analizador |
 | Copias verificadas de SQLite | Según `backup_interval` | Gestor de recuperación |
 | Diario crítico y reconciliación | Antes/después de efectos externos | Gestor de recuperación |
+| Rotación del log operativo | Semanal, ocho copias | Cron/timer de logrotate del servidor |
 
 Estas tareas se han probado en el entorno de desarrollo; su programación operativa requiere ejecutar los instaladores en el servidor de destino.
 

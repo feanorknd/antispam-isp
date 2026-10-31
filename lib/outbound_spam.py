@@ -30,7 +30,7 @@ from postfix_settings import restart_postfix
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "1.0.2"
+VERSION = "1.1.0"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
 TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
@@ -1237,6 +1237,7 @@ class Actions:
             if a["kind"] == "notify" and not self.s.notice_due(incident["account"], self.now, self.c["reminder_interval"]):
                 continue
             try:
+                held_before = self.s.db.execute("SELECT COUNT(*) FROM held WHERE incident=?", (incident["id"],)).fetchone()[0]
                 self.s.db.execute("UPDATE actions SET attempts=attempts+1,attempted=? WHERE id=?", (self.now, a["id"]))
                 self.s.persist_critical()
                 if a["kind"] == "block_smtp":
@@ -1258,10 +1259,15 @@ class Actions:
                 if a["kind"] == "reset_password":
                     # No conservar hashes anteriores una vez confirmada la acción y la caché.
                     self.s.db.execute("UPDATE actions SET payload='{}' WHERE id=?", (a["id"],))
+                held_after = self.s.db.execute("SELECT COUNT(*) FROM held WHERE incident=?", (incident["id"],)).fetchone()[0]
+                if a["kind"] != "hold_queue" or held_after != held_before:
+                    runtime.audit("accion_completada", incidente=incident["id"], cuenta=incident["account"],
+                                  accion=a["kind"], retenidos_nuevos=held_after - held_before)
             except (MonitorError, OSError, smtplib.SMTPException, ValueError) as e:
                 if corruption(e):
                     self.s.set("guard_checked", 0)
                 self.s.db.execute("UPDATE actions SET state='failed',error=? WHERE id=?", (str(e)[:500], a["id"]))
+                runtime.audit("accion_fallida", incidente=incident["id"], cuenta=incident["account"], accion=a["kind"], error=str(e))
             self.s.persist_critical()
         reports = private_directory(Path(self.c["state_dir"]) / "reports")
         for incident in self.s.db.execute("SELECT * FROM incidents WHERE acked IS NULL").fetchall():
@@ -1652,6 +1658,7 @@ def finish_queue_op(store, config, commands, item):
     store.db.execute("DELETE FROM held WHERE qid=? AND fingerprint=?", (item["qid"], item["fingerprint"]))
     store.db.execute("UPDATE queue_ops SET state='done',error=NULL WHERE id=?", (item["id"],))
     store.persist_critical()
+    runtime.audit("operacion_cola_completada", cuenta=item["account"], cola=item["qid"], accion=operation)
 
 
 def queue_operation(store, config, commands, account, env, operation, now):
@@ -1913,8 +1920,7 @@ def cli():
     return p, args
 
 
-def main():
-    parser, args = cli()
+def _main(parser, args):
     os.umask(0o077)
     base = Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent))
     code_base = Path(os.environ.get("OUTBOUND_SPAM_CODE", base))
@@ -1927,8 +1933,11 @@ def main():
                 return Config.from_bytes(data)
             except MonitorError as exc:
                 raise ValueError(str(exc)) from exc
-        config, config_warning = runtime.load_config(args.config_path, code_base, parse_profile, atomic_write)
+        cache = private_directory(args.state_dir) / "outbound-spam.conf.last-good.json" if args.replay and args.state_dir else None
+        config, config_warning = runtime.load_config(args.config_path, code_base, parse_profile, atomic_write, cache_path=cache)
     args.config_path = str(Path(args.config_path).absolute())
+    if config_warning and not args.replay:
+        runtime.audit("configuracion_advertencia", detalle=config_warning)
     if config_warning and any((args.set_limits, args.configure_postfix, args.install_service, args.install_monit, args.install_postfix_guard)):
         raise MonitorError(config_warning + "; corrija el archivo antes de modificar la instalación")
     for option, key in ((args.max_sent, "max_sent"), (args.time_period, "time_period")):
@@ -2036,7 +2045,7 @@ def main():
                         return 0
                     raise MonitorError("Tiempo agotado esperando la operación activa")
                 time.sleep(0.1)
-        current = base / ".antispam/current"
+        current = runtime.data_root() / "current"
         if current.is_symlink() and not args.prepare_upgrade and code_base.resolve() != current.resolve():
             raise MonitorError("La aplicación cambió mientras esperaba; vuelva a ejecutar el comando")
         if args.status:
@@ -2066,6 +2075,8 @@ def main():
                 store.persist_critical()
                 if recovery:
                     recovery.backup(store, force=True)
+                from distribution import legacy_prepare
+                legacy_prepare(code_base, args.config_path)
                 print(json.dumps({"version": VERSION, "schema_version": store.db.execute("PRAGMA user_version").fetchone()[0], "prepared": True}))
                 return 0
             if recovery is not None:
@@ -2137,6 +2148,17 @@ def main():
                                           "duration_seconds": round(time.monotonic() - started, 4), "new_incidents": opened}
                     summary["offline"] = bool(args.replay)
                     atomic_write(directory / "status.json", json.dumps(summary, ensure_ascii=False, indent=2))
+                    if not args.replay:
+                        runtime.audit("estado", estado=summary["message"], incidencias=summary["issues"],
+                                      nuevos_incidentes=opened, bytes_leidos=reader.bytes,
+                                      duracion=summary["metrics"]["duration_seconds"])
+                        for incident in summary["incidents"]:
+                            details = dict(incident, ajustes={key: config[key] for key in ("block_smtp", "hold_queue", "reset_password", "notify")})
+                            key = "audit_incident_" + str(incident["id"])
+                            if store.get(key) != details:
+                                runtime.audit("incidencia", **details)
+                                store.set(key, details)
+                        store.db.commit()
                     # Purgar solo mensajes terminados: conservar correlación de colas antiguas/HOLD.
                     with store.db:
                         store.db.execute("DELETE FROM messages WHERE removed=1 AND created<?", (now - config["retention_days"] * 86400,))
@@ -2180,6 +2202,46 @@ def main():
             finally:
                 store.db.close()
     return 0
+
+
+def main():
+    parser, args = cli()
+    # Las reproducciones offline no escriben en el log operativo del servidor.
+    if args.replay:
+        return _main(parser, args)
+    os.close(runtime.open_log())
+    operation = next(("--" + key.replace("_", "-") for key, value in vars(args).items()
+                      if value and key in ("run", "daemon", "upgrade", "status", "doctor", "prepare_upgrade",
+                      "set_limits", "configure_postfix", "install_service", "uninstall_service", "install_monit",
+                      "uninstall_monit", "install_cron", "uninstall_cron", "install_postfix_guard",
+                      "uninstall_postfix_guard", "list_held", "release_held", "delete_held", "unblock", "ack",
+                      "purge_user_queue", "resolve_user", "block_user")), "consulta")
+    target = next((getattr(args, key) for key in ("list_held", "release_held", "delete_held", "unblock", "ack",
+                   "purge_user_queue", "resolve_user", "block_user") if getattr(args, key, None)), None)
+    service = os.environ.get("OUTBOUND_SPAM_SERVICE") == "1" or args.daemon
+    if not service:
+        parameters = {key: getattr(args, key) for key in ("max_sent", "time_period", "outbound_delay", "destination_delay",
+                      "postfix_client_limit", "skip_postfix", "from_start") if getattr(args, key) is not None}
+        runtime.audit("operacion_solicitada", operacion=operation, cuenta=target, parametros=parameters)
+    class Output:
+        def __init__(self, original):
+            self.original, self.text = original, ""
+        def write(self, text):
+            self.text += text[:max(0, 8192 - len(self.text))]
+            return self.original.write(text)
+        def flush(self):
+            self.original.flush()
+    output = Output(sys.stdout)
+    try:
+        with contextlib.redirect_stdout(output):
+            result = _main(parser, args)
+        if not service:
+            runtime.audit("operacion_finalizada", operacion=operation, cuenta=target, codigo=result,
+                          resultado=output.text.strip())
+        return result
+    except (Exception, SystemExit) as exc:
+        runtime.audit("error", mode="servicio" if service else "manual", operacion=operation, cuenta=target, error=str(exc))
+        raise
 
 
 if __name__ == "__main__":

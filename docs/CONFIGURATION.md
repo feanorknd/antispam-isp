@@ -55,7 +55,7 @@ El informe de correo siempre corresponde a una sola cuenta. La separación míni
 
 Se puede editar y guardar el archivo mientras el servicio está activo. Cada pasada utiliza una instantánea validada. Si se lee un guardado incompleto o inválido, se mantiene la última configuración válida, en vez de aplicar valores por defecto o detener el bucle. El problema se indica en Monit. Las opciones administrativas que modifican la instalación requieren corregir primero esa configuración inválida.
 
-La caché `ARCHIVO.conf.last-good.json` contiene valores privados y tiene modo 0600. Los cambios válidos se adoptan al iniciar una nueva pasada. Guardar parámetros de Postfix con nano no edita por sí solo `main.cf`: usar `--configure-postfix` para aplicarlos. Las rutas de instancia/estado requieren una migración y reinstalación controladas; la unidad fija su directorio de estado. Véase [SERVICE.md](SERVICE.md).
+La caché `/var/lib/outbound-spam/ARCHIVO.conf.last-good.json` contiene valores privados y tiene modo 0600; el nombre predeterminado es `outbound-spam.conf.last-good.json`. Los cambios válidos se adoptan al iniciar una nueva pasada. Guardar parámetros de Postfix con nano no edita por sí solo `main.cf`: usar `--configure-postfix` para aplicarlos. Las rutas de instancia/estado requieren una migración y reinstalación controladas; la unidad fija su directorio de estado. Véase [SERVICE.md](SERVICE.md).
 
 ## Lectura y estado
 

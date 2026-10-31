@@ -13,13 +13,13 @@ sys.path.insert(0, str(ROOT / "lib"))
 import distribution
 
 
-def build(source, output):
+def build(source, output, legacy=False):
     source, output = Path(source).resolve(), Path(output).resolve()
     manifest = distribution.make_manifest(source)
     distribution.validate_tree(source)
     output.mkdir(mode=0o755, parents=True, exist_ok=True)
     number = manifest["version"]
-    prefix = "antispam-isp-" + number
+    prefix = ("antispam-isp-" if legacy else "outbound-spam-") + number
     archive = output / (prefix + ".tar.gz")
     payloads = {name: (source / name).read_bytes() for name in manifest["files"]}
     payloads["RELEASE.json"] = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
@@ -34,7 +34,8 @@ def build(source, output):
                     info.uid = info.gid = 0
                     tar.addfile(info, io.BytesIO(data))
     checksum = distribution.digest(archive)
-    (output / "SHA256SUMS").write_text(checksum + "  " + archive.name + "\n")
+    archives = [output / (name + number + ".tar.gz") for name in ("outbound-spam-", "antispam-isp-")]
+    (output / "SHA256SUMS").write_text("".join(distribution.digest(path) + "  " + path.name + "\n" for path in archives if path.exists()))
     return archive, checksum
 
 
@@ -44,6 +45,7 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "dist")
     args = parser.parse_args()
     archive, checksum = build(args.source, args.output)
+    build(args.source, args.output, legacy=True)
     print(json.dumps({"archive": str(archive), "sha256": checksum, "checksums": str(archive.parent / "SHA256SUMS")}, indent=2))
 
 
