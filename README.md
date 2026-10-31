@@ -1,6 +1,6 @@
 # Outbound Spam Monitor
 
-Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.1.0**.
+Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.2.0**.
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
 
@@ -23,7 +23,7 @@ VERSION                       Versión de la distribución
 
 ## Instalación y actualización
 
-Descargar `outbound-spam-1.1.0.tar.gz` y `SHA256SUMS` del [release 1.1.0](https://github.com/feanorknd/antispam-isp/releases/tag/v1.1.0), comprobar el checksum, extraer y ejecutar:
+Descargar `outbound-spam-1.2.0.tar.gz` y `SHA256SUMS` del [release 1.2.0](https://github.com/feanorknd/antispam-isp/releases/tag/v1.2.0), comprobar el checksum, extraer y ejecutar:
 
 ```bash
 sudo ./install.sh --install-deps
@@ -42,6 +42,15 @@ El instalador conserva el archivo operativo y el estado. En `/root/scripts/` ins
 Las configuraciones existentes no se reescriben, ni se les añaden valores automáticamente. Las variables nuevas ausentes se notifican para revisión. 1.0.1 corrige la configuración de retrasos en servidores cuyo `master.cf` contiene `discard` y otros agentes específicos de ISPConfig.
 
 1.1.0 añade un registro privado en `/var/log/outbound-spam.log`: hora local y zona del servidor, tipo manual/servicio, estado, incidencias y resultados de las acciones. El instalador configura rotación semanal con ocho copias en `/etc/logrotate.d/outbound-spam`. Detalles y ejemplos en [logs operativos](docs/LOGGING.md).
+
+1.2.0 permite guardar límites y excepciones por cuenta desde el script:
+
+```bash
+sudo /root/scripts/outbound-spam.sh --set-custom-limit boletin@ejemplo.com 2000 900
+sudo /root/scripts/outbound-spam.sh --set-ignore boletin@ejemplo.com
+```
+
+El límite particular sustituye al anterior y retira la cuenta de ignorados; marcarla como ignorada elimina su límite particular. Se valida y guarda la configuración sin reiniciar servicios, con respaldo y registro operativo. Véase [configuración por cuenta](docs/CONFIGURATION.md#administrar-límites-y-excepciones-desde-el-script).
 
 ## Documentación
 

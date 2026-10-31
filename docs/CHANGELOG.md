@@ -1,5 +1,12 @@
 # Cambios efectuados
 
+## 1.2.0 — 2026-10-31
+
+- `--set-custom-limit CUENTA MAXIMO SEGUNDOS`: guarda/actualiza un límite particular y retira la cuenta de ignorados.
+- `--set-ignore CUENTA`: guarda la excepción y elimina su límite particular; operaciones idempotentes y cuentas normalizadas.
+- Validación de argumentos y configuración, guardado atómico privado con respaldo/caché y relectura bajo bloqueo para conservar actualizaciones simultáneas.
+- Ayuda y ejemplos prácticos; resultados en el log operativo. Se mantienen las decisiones administrativas independientes sobre incidencias, bloqueos y HOLD.
+
 ## 1.1.0 — 2026-10-31
 
 - Almacenamiento del programa trasladado a `/var/lib/outbound-spam/`: versiones, enlace current, respaldos y gestor de actualizaciones.

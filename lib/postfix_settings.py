@@ -5,15 +5,108 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shlex
 import stat
 import subprocess
 import sys
 import time
+import runtime
 
 BEGIN = "# ================= BEGIN OUTBOUND-SPAM RATELIMITS ================="
 END = "# ================== END OUTBOUND-SPAM RATELIMITS =================="
 CONF_BEGIN = "# BEGIN OUTBOUND-SPAM LIMITS"
 CONF_END = "# END OUTBOUND-SPAM LIMITS"
+ACCOUNTS_BEGIN = "# BEGIN OUTBOUND-SPAM ACCOUNT RULES"
+ACCOUNTS_END = "# END OUTBOUND-SPAM ACCOUNT RULES"
+
+
+def account_address(value):
+    """Formato de cuenta SASL soportado: local dot-atom y dominio DNS/IDNA."""
+    if len(value) > 254 or value.count("@") != 1 or value.startswith("-"):
+        raise ValueError("Cuenta de correo inválida: " + repr(value))
+    local, domain = value.split("@")
+    if not 1 <= len(local) <= 64 or not re.fullmatch(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+", local) or local.startswith(".") or local.endswith(".") or ".." in local:
+        raise ValueError("Cuenta de correo inválida: " + repr(value))
+    try:
+        labels = domain.encode("idna").decode("ascii").split(".")
+    except UnicodeError:
+        raise ValueError("Dominio de correo inválido: " + repr(domain))
+    if any(not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) for label in labels):
+        raise ValueError("Dominio de correo inválido: " + repr(domain))
+    return value.casefold()
+
+
+def account_limit(value):
+    if not re.fullmatch(r"[0-9]+", value) or not 0 < int(value) <= 9223372036854775807:
+        raise ValueError("El límite y el periodo deben ser enteros positivos (máximo 2^63-1)")
+    return int(value)
+
+
+def render_accounts(text, ignored, limits):
+    # Bash es ejecutable: conservar declaraciones/manuales y aplicar un único bloque
+    # final autoritativo evita mutilar arrays multilínea, funciones o comentarios.
+    text = remove_block(text, ACCOUNTS_BEGIN, ACCOUNTS_END)
+    block = [ACCOUNTS_BEGIN,
+             "# Valores finales de ignore y custom_limits; editar aquí o usar los comandos --set-*.",
+             "unset ignore custom_limits",
+             "declare -a ignore=(" + " ".join(shlex.quote(value) for value in sorted(ignored)) + ")",
+             "declare -A custom_limits=("]
+    block += ["    [%s]=%s" % (shlex.quote(account), shlex.quote("%d:%d" % limits[account])) for account in sorted(limits)]
+    block += [")", ACCOUNTS_END]
+    return text.rstrip() + "\n\n" + "\n".join(block) + "\n"
+
+
+def configure_account(config_path, base, parse, write_atomic, *, account, limit=None, state_dir):
+    """El llamante posee el bloqueo operativo. Releer para no perder cambios en espera."""
+    conf = Path(config_path).absolute()
+    original = runtime.stable_bytes(conf)
+    config, _ = runtime.validate_config(original, base, parse)
+    if Path(config["state_dir"]).resolve() != Path(state_dir).resolve():
+        raise ValueError("state_dir cambió mientras esperaba; vuelva a ejecutar el comando")
+    account = account_address(account)
+    if limit is not None:
+        limit = tuple(account_limit(str(value)) for value in limit)
+        if len(limit) != 2:
+            raise ValueError("Se requieren máximo y periodo")
+    ignored, limits = set(config["ignore"]), dict(config["custom_limits"])
+    previous_limit, was_ignored = limits.get(account), account in ignored
+    if limit is None:
+        ignored.add(account)
+        limits.pop(account, None)
+    else:
+        ignored.discard(account)
+        limits[account] = limit
+    result = {"account": account, "ignored": account in ignored, "custom_limit": limit,
+              "previous_ignored": was_ignored, "previous_custom_limit": previous_limit,
+              "config": str(conf), "changed": ignored != config["ignore"] or limits != config["custom_limits"],
+              "note": "Se conservan incidentes, bloqueos y mensajes retenidos existentes; la regla se aplica en la siguiente pasada"}
+    if not result["changed"]:
+        return result
+    proposed = render_accounts(original.decode("utf-8"), ignored, limits).encode("utf-8")
+    candidate, serialized = runtime.validate_config(proposed, base, parse)
+    expected = dict(config.v, ignore=ignored, custom_limits=limits)
+    if candidate.v != expected:
+        raise ValueError("La configuración propuesta no conserva los demás ajustes")
+    cache = runtime.config_cache(conf)
+    if cache.exists() or cache.is_symlink():
+        runtime.check_private(cache)
+    old_cache = cache.read_text() if cache.exists() else None
+    backup = runtime.private_data() / ("account-rules-backup-%d-%s.json" % (time.time(), secrets.token_hex(4)))
+    write_atomic(backup, json.dumps({"config_path": str(conf), "config": original.decode("utf-8"), "cache": old_cache}, ensure_ascii=False))
+    if runtime.stable_bytes(conf) != original:
+        raise ValueError("La configuración cambió durante la operación; vuelva a intentarlo")
+    try:
+        write_atomic(conf, proposed.decode("utf-8"))
+        write_atomic(cache, json.dumps(runtime.config_record(conf, proposed, serialized)))
+    except Exception:
+        write_atomic(conf, original.decode("utf-8"))
+        if old_cache is None:
+            if cache.exists():
+                cache.unlink()
+        else:
+            write_atomic(cache, old_cache)
+        raise
+    return dict(result, backup=str(backup))
 
 
 def numeric_value(value):

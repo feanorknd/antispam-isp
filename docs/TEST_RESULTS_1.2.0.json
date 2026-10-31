@@ -1,0 +1,30 @@
+{
+  "application_version": "1.2.0",
+  "schema_version": 3,
+  "date": "2026-10-31",
+  "matrix": [
+    {"image": "ubuntu:focal", "python": "3.8.10", "postfix": "3.4.13", "tests": 176, "result": "passed"},
+    {"image": "debian:bullseye", "python": "3.9.2", "postfix": "3.5.25", "tests": 176, "result": "passed"},
+    {"image": "ubuntu:jammy", "python": "3.10.12", "postfix": "3.6.4", "tests": 176, "result": "passed"},
+    {"image": "ubuntu:noble", "python": "3.12.3", "postfix": "3.8.6", "tests": 176, "result": "passed"},
+    {"image": "ubuntu:26.04", "python": "3.14.4", "postfix": "3.10.6", "tests": 176, "result": "passed"}
+  ],
+  "new_checks": [
+    "per-account CLI limit and ignore rules, overwrites and mutually exclusive account policy",
+    "normalized addresses, idempotence and preservation of other accounts and settings",
+    "reject incomplete arguments, invalid mailboxes, non-positive numbers and incompatible retention",
+    "Bash multiline arrays and safe quoting of account characters",
+    "private atomic save, backup and immediate last-good cache update",
+    "restore configuration and cache after simulated cache write failure",
+    "reject concurrent external edit or state directory change",
+    "two real root CLI processes wait for the same lock and preserve both updates",
+    "manual operation logs contain requested and resulting rules without credentials",
+    "account configuration commands do not invoke Postfix or change existing incidents",
+    "help explains both commands and practical examples",
+    "actual public 1.1.0 CLI upgrade with active and stopped unit, unchanged private configuration and use of new commands afterwards",
+    "public 1.0.0 and 1.0.2 updater compatibility and cross-filesystem legacy migration regression"
+  ],
+  "systemctl_commands": "simulated; unit syntax, Postfix, Monit validator, daemon and logrotate execute natively",
+  "private_test_sources": "excluded from public Git and installation assets",
+  "legacy_110_archive_sha256": "3d23bfc6811cf835b902ea7eb63287e1ac6d1ac7b0605500771f2fbe118ea636"
+}

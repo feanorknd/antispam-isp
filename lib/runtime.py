@@ -169,6 +169,22 @@ def stable_bytes(path, pause=time.sleep):
     raise ValueError("La configuración está cambiando durante la lectura")
 
 
+def validate_config(content, base, parse):
+    syntax = subprocess.run(["/bin/bash", "-n"], input=content, capture_output=True, timeout=10)
+    if syntax.returncode:
+        raise ValueError("Sintaxis Bash inválida")
+    proc = subprocess.run(["/bin/bash", str(base / "lib/load_config.sh"), str(base / "outbound-spam.conf.example")],
+                          input=content, capture_output=True, timeout=15)
+    if proc.returncode:
+        raise ValueError("No se puede evaluar la configuración Bash")
+    return parse(proc.stdout), proc.stdout
+
+
+def config_record(path, content, serialized):
+    return {"path": str(Path(path).absolute()), "data": base64.b64encode(serialized).decode("ascii"),
+            "sha256": hashlib.sha256(serialized).hexdigest(), "source_sha256": hashlib.sha256(content).hexdigest()}
+
+
 def load_config(path, base, parse, write_atomic, cache_path=None):
     path = Path(path).absolute()
     cache = Path(cache_path) if cache_path is not None else config_cache(path)
@@ -180,17 +196,8 @@ def load_config(path, base, parse, write_atomic, cache_path=None):
             write_atomic(cache, json.dumps(saved))
     try:
         content = stable_bytes(path)
-        syntax = subprocess.run(["/bin/bash", "-n"], input=content, capture_output=True, timeout=10)
-        if syntax.returncode:
-            raise ValueError("Sintaxis Bash inválida")
-        proc = subprocess.run(["/bin/bash", str(base / "lib/load_config.sh"), str(base / "outbound-spam.conf.example")],
-                              input=content, capture_output=True, timeout=15)
-        if proc.returncode:
-            raise ValueError("No se puede evaluar la configuración Bash")
-        config = parse(proc.stdout)
-        encoded = base64.b64encode(proc.stdout).decode("ascii")
-        record = {"path": str(path), "data": encoded, "sha256": hashlib.sha256(proc.stdout).hexdigest(),
-                  "source_sha256": hashlib.sha256(content).hexdigest()}
+        config, serialized = validate_config(content, base, parse)
+        record = config_record(path, content, serialized)
         old = None
         if cache.exists():
             check_private(cache)

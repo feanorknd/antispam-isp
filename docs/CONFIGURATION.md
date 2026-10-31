@@ -24,6 +24,31 @@ declare -A custom_limits=(
 - `ignore` excluye completamente la cuenta de la detección nueva y de la creación de acciones. No borra un incidente ni un bloqueo ya existente: utilizar los comandos administrativos correspondientes.
 - Un límite particular sustituye tanto máximo como periodo de esa cuenta.
 
+### Administrar límites y excepciones desde el script
+
+```bash
+sudo /root/scripts/outbound-spam.sh --set-custom-limit boletin@ejemplo.com 2000 900
+sudo /root/scripts/outbound-spam.sh --set-ignore boletin@ejemplo.com
+```
+
+`--set-custom-limit CUENTA MAXIMO SEGUNDOS` guarda un máximo de **destinatarios externos** por ventana, sustituye el límite particular anterior y retira la cuenta de `ignore` si estaba ignorada. En el ejemplo, 2.000 destinatarios externos en 900 segundos; la alerta se abre al superar 2.000. Mantiene la reducción por dominio remitente distinto descrita abajo.
+
+`--set-ignore CUENTA` añade la cuenta a ignorados y elimina su límite particular. Repetir cualquiera de las dos órdenes con los mismos valores no duplica reglas ni vuelve a escribir la configuración si no hay cambios. Para volver a supervisar una cuenta ignorada, asignarle el límite deseado:
+
+```bash
+sudo /root/scripts/outbound-spam.sh --set-custom-limit boletin@ejemplo.com 500 3600
+```
+
+Las cuentas se normalizan a minúsculas. Se comprueban el formato de la dirección, todos los argumentos, enteros positivos y que la retención cubra la ventana solicitada. La validación de dirección comprueba el formato, no la existencia del buzón en ISPConfig. Los errores devuelven un código distinto de cero. Una configuración incompleta o inválida debe corregirse antes de editarla administrativamente, aunque exista una última copia válida.
+
+Se utiliza `/root/scripts/outbound-spam.conf` por defecto; `--config /ruta/privada.conf` permite elegir otro archivo. Las operaciones requieren root, esperan el bloqueo operativo y releen el archivo al obtenerlo para conservar cambios de otra orden que haya terminado mientras esperaban. No requieren herramientas de Postfix ni abrir la base de incidentes.
+
+El script conserva el contenido previo del archivo y añade/actualiza un único bloque final `OUTBOUND-SPAM ACCOUNT RULES`, que contiene los valores efectivos completos de `ignore` y `custom_limits`. **Ese bloque prevalece sobre las declaraciones anteriores**: si se edita manualmente después, modificar las listas de ese bloque o utilizar los comandos. Así se conservan comentarios, arrays multilínea y ajustes ajenos sin intentar reescribir código Bash arbitrario. Las demás cuentas conservan sus reglas efectivas.
+
+Antes de guardar se evalúa y valida la configuración resultante, y se verifica que no cambie ningún otro ajuste. El guardado es atómico, con modo 0600, respaldo privado en `/var/lib/outbound-spam/account-rules-backup-*.json` y actualización de la última copia válida. Un fallo durante el guardado intenta restaurar configuración y caché anteriores. La solicitud, los valores anteriores/nuevos y el resultado se registran en el log operativo.
+
+Los cambios se adoptan en la siguiente pasada, sin reiniciar servicio ni Postfix. **No cierran incidencias, retiran bloqueos ni liberan o eliminan correo ya retenido**. Si se ha corregido un falso positivo, utilizar después `--resolve-user CUENTA` para resolverlo coordinadamente, o los comandos individuales de [OPERATIONS.md](OPERATIONS.md).
+
 ### Dominio remitente distinto
 
 Se compara el dominio del **remitente SMTP del sobre** (`MAIL FROM`, registrado en `qmgr` o leído de la cola) con el de la cuenta SASL. No se utiliza la cabecera visible `From:`.

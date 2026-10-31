@@ -1,6 +1,6 @@
 # Tareas y programación
 
-Actualizado: **2026-10-31**, versión 1.1.0.
+Actualizado: **2026-10-31**, versión 1.2.0.
 
 ## Completadas
 
@@ -66,10 +66,14 @@ Actualizado: **2026-10-31**, versión 1.1.0.
 - [x] Añadir logs privados manuales/de servicio y política semanal de logrotate.
 - [x] Validar 163 pruebas por distribución, incluyendo rotación real y rollback de rutas.
 - [x] Publicar 1.1.0 y verificar sin autenticación ambos paquetes, checksums y descubrimiento mediante el actualizador público 1.0.2.
+- [x] Administrar límites particulares e ignorados con `--set-custom-limit` y `--set-ignore`, conservando las reglas de las demás cuentas.
+- [x] Validar entradas, prioridades, idempotencia, caché y restauración, con bloqueo y registro de resultados.
+- [x] Incorporar ambos comandos y ejemplos prácticos en la ayuda y la documentación.
+- [x] Verificar 176 pruebas en las cinco distribuciones, incluido el upgrade público desde 1.1.0 y el uso de los nuevos comandos en la instalación actualizada.
 
 ## En ejecución
 
-Ninguna tarea de publicación pendiente. Release: https://github.com/feanorknd/antispam-isp/releases/tag/v1.1.0 .
+Validación final y publicación de 1.2.0, con comprobación de paquetes públicos y compatibilidad del actualizador 1.1.0.
 
 ## Programadas por el software, al instalarlo en el servidor
 

@@ -30,7 +30,7 @@ from postfix_settings import restart_postfix
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
 TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
@@ -1834,9 +1834,20 @@ def cli():
   La purga BORRA mensajes; conserva los locales/mixtos con locales pendientes.
 
   Falso positivo: ajustar antes el límite/excepción en la configuración y resolver:
-    nano /root/scripts/outbound-spam.conf
+    outbound-spam.sh --set-custom-limit cuenta@example.org 2000 900
     outbound-spam.sh --resolve-user cuenta@example.org
   Libera las retenciones propias, reconoce el incidente y retira el bloqueo remoto.
+
+  Límites y excepciones por cuenta, guardados en outbound-spam.conf:
+    outbound-spam.sh --set-custom-limit boletin@ejemplo.com 2000 900
+      Hasta 2000 destinatarios externos en 900 segundos; sustituye su límite anterior
+      y retira la cuenta de ignore si estaba ignorada.
+    outbound-spam.sh --set-ignore boletin@ejemplo.com
+      Ignora la cuenta y elimina su límite particular; repetirlo no crea duplicados.
+    outbound-spam.sh --set-custom-limit boletin@ejemplo.com 500 3600
+      Vuelve a supervisarla con 500 destinatarios externos por hora.
+  Requieren una dirección válida y enteros positivos; conservan las demás cuentas.
+  Se aplican en la siguiente pasada, sin reiniciar. No desbloquean ni liberan HOLD.
 
   Decidir por separado el destino de mensajes retenidos:
     outbound-spam.sh --release-held cuenta@example.org   # liberar, sin desbloquear
@@ -1877,6 +1888,9 @@ def cli():
     choices.add_argument("--skip-postfix", action="store_true", help="Guardar límites sin modificar/reiniciar Postfix")
     mode = p.add_mutually_exclusive_group(required=False)
     mode.add_argument("--set-limits", action="store_true", help="Guardar límites, ajustar main.cf y reiniciar su instancia")
+    mode.add_argument("--set-custom-limit", nargs=3, metavar=("CUENTA", "MAXIMO", "SEGUNDOS"),
+                      help="Guardar límite particular de destinatarios externos; sustituir el anterior y retirar de ignore")
+    mode.add_argument("--set-ignore", metavar="CUENTA", help="Guardar cuenta ignorada y eliminar su límite particular")
     mode.add_argument("--configure-postfix", action="store_true", help="Instalar/actualizar el bloque Ratelimits coordinado")
     mode.add_argument("--run", action="store_true", help="Leer lo nuevo, evaluar límites y ejecutar las acciones habilitadas una vez")
     mode.add_argument("--daemon", action="store_true", help="Proceso del servicio systemd; espera entre pasadas completas")
@@ -1907,7 +1921,7 @@ def cli():
         mode.add_argument("--" + option, metavar="CUENTA", help=explanation)
     args = p.parse_args()
     selected = any(getattr(args, k) for k in ("run", "daemon", "upgrade", "prepare_upgrade", "install_service", "uninstall_service", "replay", "status", "doctor", "install_monit", "uninstall_monit", "install_postfix_guard",
-                   "uninstall_postfix_guard", "install_cron", "uninstall_cron", "list_held", "release_held", "delete_held", "unblock", "ack", "set_limits", "configure_postfix", "purge_user_queue", "resolve_user", "block_user"))
+                   "uninstall_postfix_guard", "install_cron", "uninstall_cron", "list_held", "release_held", "delete_held", "unblock", "ack", "set_limits", "configure_postfix", "purge_user_queue", "resolve_user", "block_user", "set_custom_limit", "set_ignore"))
     if not selected:
         if args.max_sent is not None or args.time_period is not None:
             args.set_limits = True
@@ -1917,6 +1931,18 @@ def cli():
         p.error("Las opciones administrativas de Postfix requieren --set-limits o --configure-postfix")
     if args.upgrade_lock_fd is not None and not args.prepare_upgrade:
         p.error("Descriptor interno de actualización fuera de preparación")
+    if args.set_custom_limit or args.set_ignore:
+        if args.max_sent is not None or args.time_period is not None or args.state_dir or args.config_fd is not None or args.from_start:
+            p.error("Los límites/excepciones por cuenta usan --config y no admiten límites generales, --state-dir ni --from-start")
+        from postfix_settings import account_address, account_limit
+        try:
+            if args.set_custom_limit:
+                account, maximum, period = args.set_custom_limit
+                args.set_custom_limit = (account_address(account), account_limit(maximum), account_limit(period))
+            else:
+                args.set_ignore = account_address(args.set_ignore)
+        except ValueError as exc:
+            p.error(str(exc))
     return p, args
 
 
@@ -1925,20 +1951,20 @@ def _main(parser, args):
     base = Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent))
     code_base = Path(os.environ.get("OUTBOUND_SPAM_CODE", base))
     config_warning = None
+    def parse_profile(data):
+        try:
+            return Config.from_bytes(data)
+        except MonitorError as exc:
+            raise ValueError(str(exc)) from exc
     if args.config_fd is not None:
         config = Config.from_fd(args.config_fd)
     else:
-        def parse_profile(data):
-            try:
-                return Config.from_bytes(data)
-            except MonitorError as exc:
-                raise ValueError(str(exc)) from exc
         cache = private_directory(args.state_dir) / "outbound-spam.conf.last-good.json" if args.replay and args.state_dir else None
         config, config_warning = runtime.load_config(args.config_path, code_base, parse_profile, atomic_write, cache_path=cache)
     args.config_path = str(Path(args.config_path).absolute())
     if config_warning and not args.replay:
         runtime.audit("configuracion_advertencia", detalle=config_warning)
-    if config_warning and any((args.set_limits, args.configure_postfix, args.install_service, args.install_monit, args.install_postfix_guard)):
+    if config_warning and any((args.set_limits, args.configure_postfix, args.install_service, args.install_monit, args.install_postfix_guard, args.set_custom_limit, args.set_ignore)):
         raise MonitorError(config_warning + "; corrija el archivo antes de modificar la instalación")
     for option, key in ((args.max_sent, "max_sent"), (args.time_period, "time_period")):
         if option is not None:
@@ -2048,6 +2074,14 @@ def _main(parser, args):
         current = runtime.data_root() / "current"
         if current.is_symlink() and not args.prepare_upgrade and code_base.resolve() != current.resolve():
             raise MonitorError("La aplicación cambió mientras esperaba; vuelva a ejecutar el comando")
+        if args.set_custom_limit or args.set_ignore:
+            from postfix_settings import configure_account
+            account = args.set_custom_limit[0] if args.set_custom_limit else args.set_ignore
+            limit = args.set_custom_limit[1:] if args.set_custom_limit else None
+            result = configure_account(args.config_path, code_base, parse_profile, atomic_write,
+                                       account=account, limit=limit, state_dir=directory)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
         if args.status:
             status = json.loads((directory / "status.json").read_text())
             age = now - status["last_success"]
@@ -2215,13 +2249,17 @@ def main():
                       "set_limits", "configure_postfix", "install_service", "uninstall_service", "install_monit",
                       "uninstall_monit", "install_cron", "uninstall_cron", "install_postfix_guard",
                       "uninstall_postfix_guard", "list_held", "release_held", "delete_held", "unblock", "ack",
-                      "purge_user_queue", "resolve_user", "block_user")), "consulta")
+                      "purge_user_queue", "resolve_user", "block_user", "set_custom_limit", "set_ignore")), "consulta")
     target = next((getattr(args, key) for key in ("list_held", "release_held", "delete_held", "unblock", "ack",
                    "purge_user_queue", "resolve_user", "block_user") if getattr(args, key, None)), None)
+    if args.set_custom_limit or args.set_ignore:
+        target = args.set_custom_limit[0] if args.set_custom_limit else args.set_ignore
     service = os.environ.get("OUTBOUND_SPAM_SERVICE") == "1" or args.daemon
     if not service:
         parameters = {key: getattr(args, key) for key in ("max_sent", "time_period", "outbound_delay", "destination_delay",
                       "postfix_client_limit", "skip_postfix", "from_start") if getattr(args, key) is not None}
+        if args.set_custom_limit:
+            parameters.update(maximum=args.set_custom_limit[1], period=args.set_custom_limit[2])
         runtime.audit("operacion_solicitada", operacion=operation, cuenta=target, parametros=parameters)
     class Output:
         def __init__(self, original):

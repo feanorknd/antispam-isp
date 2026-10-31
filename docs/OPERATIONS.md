@@ -57,6 +57,23 @@ La retención es por mensaje completo. Para preservar la entrega local, el monit
 
 Las comprobaciones reducen la confusión por reutilización de IDs; Postfix no ofrece una transacción atómica entre la inspección del sobre y `postsuper`. Los IDs largos reducen esa posibilidad. Su activación, si se desea, se administra de forma independiente con los procedimientos habituales de Postfix.
 
+## Ajustar límites y excepciones por cuenta
+
+```bash
+# 2.000 destinatarios externos en 900 segundos; sustituye su límite y retira de ignore.
+/root/scripts/outbound-spam.sh --set-custom-limit boletin@ejemplo.com 2000 900
+
+# Ignorar la cuenta y retirar su límite particular.
+/root/scripts/outbound-spam.sh --set-ignore boletin@ejemplo.com
+
+# Volver a supervisarla, ahora con 500 destinatarios externos por hora.
+/root/scripts/outbound-spam.sh --set-custom-limit boletin@ejemplo.com 500 3600
+```
+
+Se guardan en `outbound-spam.conf`, conservan las demás cuentas y se aplican en la siguiente pasada. Dirección, máximo y periodo se validan antes de guardar; una repetición idéntica no duplica reglas. El resultado muestra la regla anterior/nueva y se registra en el log. Los límites cuentan destinatarios externos, no mensajes, y conservan la regla de dominio remitente distinto.
+
+Estas órdenes no resuelven automáticamente una incidencia ni revierten contenciones ya aplicadas. Los detalles de persistencia y edición manual están en [CONFIGURATION.md](CONFIGURATION.md).
+
 ## Desbloquear y reconocer
 
 ```bash
@@ -95,7 +112,7 @@ Cancela acciones pendientes del incidente, lo reconoce, libera/reencola sus rete
 
 Incluye un HOLD creado por una purga interrumpida antes del borrado: cancela ese borrado y libera el mensaje verificado. No se apropia de retenciones previas de otras herramientas. Si se pierde el historial crítico, exige recuperarlo antes de afirmar que ha resuelto todas las retenciones/restricciones.
 
-Para evitar que la actividad legítima vuelva a superar el umbral, corregir su límite particular o excepción en la configuración. Una contraseña ya cambiada no se puede recuperar: debe establecerse otra desde ISPConfig.
+Para evitar que la actividad legítima vuelva a superar el umbral, corregir antes su límite particular con `--set-custom-limit` o su excepción con `--set-ignore`. Una contraseña ya cambiada no se puede recuperar: debe establecerse otra desde ISPConfig.
 
 ## Errores habituales
 
