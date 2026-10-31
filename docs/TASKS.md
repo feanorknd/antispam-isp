@@ -73,10 +73,11 @@ Actualizado: **2026-10-31**, versión 1.2.1.
 - [x] Publicar 1.2.0 y comprobar descargas sin autenticación, checksums, manifiestos y descubrimiento con los actualizadores públicos 1.1.0 y 1.0.2.
 - [x] Corregir lectura de sobres con subdirectorios Postfix, con ID exacto y profundidad independiente de la configuración.
 - [x] Verificar 185 pruebas por distribución, incluidas colas reales y upgrade desde 1.2.0.
+- [x] Publicar 1.2.1 y verificar sin autenticación el descubrimiento desde 1.2.0/1.1.0/1.0.2, los checksums y el parser de los paquetes descargados.
 
 ## En ejecución
 
-Publicación de 1.2.1 y verificación de paquetes públicos con el actualizador 1.2.0.
+Ninguna tarea de publicación pendiente. Release: https://github.com/feanorknd/antispam-isp/releases/tag/v1.2.1 .
 
 ## Programadas por el software, al instalarlo en el servidor
 
