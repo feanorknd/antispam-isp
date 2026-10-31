@@ -1,6 +1,6 @@
 # Outbound Spam Monitor
 
-Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.2.0**.
+Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.2.1**.
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
 
@@ -23,7 +23,7 @@ VERSION                       Versión de la distribución
 
 ## Instalación y actualización
 
-Descargar `outbound-spam-1.2.0.tar.gz` y `SHA256SUMS` del [release 1.2.0](https://github.com/feanorknd/antispam-isp/releases/tag/v1.2.0), comprobar el checksum, extraer y ejecutar:
+Descargar `outbound-spam-1.2.1.tar.gz` y `SHA256SUMS` del [release 1.2.1](https://github.com/feanorknd/antispam-isp/releases/tag/v1.2.1), comprobar el checksum, extraer y ejecutar:
 
 ```bash
 sudo ./install.sh --install-deps
@@ -51,6 +51,8 @@ sudo /root/scripts/outbound-spam.sh --set-ignore boletin@ejemplo.com
 ```
 
 El límite particular sustituye al anterior y retira la cuenta de ignorados; marcarla como ignorada elimina su límite particular. Se valida y guarda la configuración sin reiniciar servicios, con respaldo y registro operativo. Véase [configuración por cuenta](docs/CONFIGURATION.md#administrar-límites-y-excepciones-desde-el-script).
+
+1.2.1 corrige `Cola no reconocida` al leer sobres Postfix con subdirectorios, como `deferred/A/ABC123DEF0`. Admite rutas planas o con varios niveles, IDs cortos/largos y distintas distribuciones entre colas; conserva las verificaciones de identidad y completa los mensajes pendientes en la siguiente pasada, sin reinicializar el estado.
 
 ## Documentación
 

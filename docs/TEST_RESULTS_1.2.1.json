@@ -1,0 +1,26 @@
+{
+  "application_version": "1.2.1",
+  "schema_version": 3,
+  "date": "2026-10-31",
+  "matrix": [
+    {"image": "ubuntu:focal", "python": "3.8.10", "postfix": "3.4.13", "tests": 185, "result": "passed"},
+    {"image": "debian:bullseye", "python": "3.9.2", "postfix": "3.5.25", "tests": 185, "result": "passed"},
+    {"image": "ubuntu:jammy", "python": "3.10.12", "postfix": "3.6.4", "tests": 185, "result": "passed"},
+    {"image": "ubuntu:noble", "python": "3.12.3", "postfix": "3.8.6", "tests": 185, "result": "passed"},
+    {"image": "ubuntu:26.04", "python": "3.14.4", "postfix": "3.10.6", "tests": 185, "result": "passed"}
+  ],
+  "new_checks": [
+    "flat and hashed envelope paths across incoming, active, deferred and hold, with zero to eight levels and short/long IDs",
+    "whole-header and exact requested ID match; reject wrong IDs, partial IDs, wrong sections and invalid paths",
+    "hashed bootstrap counts external recipients only, without duplicates",
+    "previously incomplete stored messages resume analysis without resetting state or warmup",
+    "unknown queue still reports incomplete coverage",
+    "hashed HOLD, release, requeue, delete and purge preserve identity and foreign HOLD ownership checks",
+    "real Postfix and CLI analysis with flat, one/two/three-level hashing and mixed deferred/hold layouts, short and long IDs in every layout",
+    "real HOLD/release/requeue/delete/purge in every native layout; message fingerprint survives queue relocation",
+    "actual public 1.2.0 CLI and updater with active/stopped unit, private configuration preserved"
+  ],
+  "systemctl_commands": "simulated; unit syntax, Postfix, Monit validator, daemon and logrotate execute natively",
+  "private_test_sources": "excluded from public Git and installation assets",
+  "legacy_120_archive_sha256": "025eb6fe8649f950052885eaec998003def96caab4b2f22a7c0ae4c2e622d074"
+}

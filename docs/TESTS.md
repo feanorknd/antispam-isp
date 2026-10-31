@@ -102,6 +102,10 @@ docker run --rm --network none outbound-spam-tests:focal postconf -h mail_versio
 - Fallo de guardado de caché con restauración, detección de edición concurrente y dos procesos CLI reales esperando el mismo bloqueo sin perder cambios.
 - Actualización de última configuración válida y logs sin credenciales; las órdenes de reglas por cuenta no ejecutan Postfix ni alteran incidentes existentes.
 - Upgrade mediante el CLI y actualizador del paquete público 1.1.0, con unidad activa/parada, configuración preservada y uso posterior de ambos comandos nuevos en la instalación actualizada.
+- Cabeceras de sobre con cero/uno/varios niveles de hash, IDs cortos/largos, coincidencia exacta del ID y rechazo de rutas/cabeceras inválidas.
+- Bootstrap de colas con hash, mensajes previamente incompletos completados sin reiniciar estado y cómputo sin duplicados.
+- Postfix real: CLI de análisis y operaciones de HOLD/liberación/reencolado/borrado/purga con colas planas, con uno/dos/tres niveles y mixtas, e IDs cortos/largos en cada disposición.
+- Upgrade mediante el CLI y actualizador del paquete público 1.2.0, con servicio activo/parado y configuración preservada.
 
 El cambio de contraseña contra la base ISPConfig real y el reinicio del Monit de destino forman parte de la validación de despliegue, no de los resultados simulados.
 
@@ -109,15 +113,15 @@ El cambio de contraseña contra la base ISPConfig real y el reinicio del Monit d
 
 Fecha de validación de la distribución: **2026-10-31**.
 
-Resultado actual: [TEST_RESULTS_1.2.0.json](TEST_RESULTS_1.2.0.json). Se conservan los de [1.1.0](TEST_RESULTS_1.1.0.json), [1.0.2](TEST_RESULTS_1.0.2.json), [1.0.1](TEST_RESULTS_1.0.1.json), [1.0.0](TEST_RESULTS_1.0.0.json), [0.3.0](TEST_RESULTS_0.3.0.json), [0.2.0](TEST_RESULTS_0.2.0.json), [0.1.1](TEST_RESULTS_0.1.1.json) y [0.1.0](TEST_RESULTS.json).
+Resultado actual: [TEST_RESULTS_1.2.1.json](TEST_RESULTS_1.2.1.json). Se conservan los de [1.2.0](TEST_RESULTS_1.2.0.json), [1.1.0](TEST_RESULTS_1.1.0.json), [1.0.2](TEST_RESULTS_1.0.2.json), [1.0.1](TEST_RESULTS_1.0.1.json), [1.0.0](TEST_RESULTS_1.0.0.json), [0.3.0](TEST_RESULTS_0.3.0.json), [0.2.0](TEST_RESULTS_0.2.0.json), [0.1.1](TEST_RESULTS_0.1.1.json) y [0.1.0](TEST_RESULTS.json).
 
 | Entorno | Resultado |
 |---|---|
-| Ubuntu Focal | 176 pruebas, correctas |
-| Ubuntu Jammy | 176 pruebas, correctas |
-| Ubuntu Noble | 176 pruebas, correctas |
-| Debian 11 | 176 pruebas, correctas |
-| Ubuntu 26.04 / Python 3.14 | 176 pruebas, correctas |
+| Ubuntu Focal | 185 pruebas, correctas |
+| Ubuntu Jammy | 185 pruebas, correctas |
+| Ubuntu Noble | 185 pruebas, correctas |
+| Debian 11 | 185 pruebas, correctas |
+| Ubuntu 26.04 / Python 3.14 | 185 pruebas, correctas |
 | Bash/ShellCheck local | Sin errores ni advertencias de nivel warning |
 
 ## Rendimiento con el log de referencia

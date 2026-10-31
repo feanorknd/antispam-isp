@@ -128,6 +128,12 @@ Para evitar que la actividad legítima vuelva a superar el umbral, corregir ante
 | Aviso por sendmail atrasado | Revisar la cola o utilizar un canal SMTP directo para informes |
 | Estado atrasado en Monit | Revisar cron, permisos, bloqueo de ejecución y errores del script |
 
+### «Cola no reconocida» y subdirectorios Postfix
+
+Una cabecera como `*** ENVELOPE RECORDS deferred/A/ABC123DEF0 ***` es normal: `deferred` es la cola y `A` un subdirectorio de hash. Desde 1.2.1 se reconocen rutas planas y con varios niveles para IDs cortos/largos, incluidas disposiciones distintas entre colas. Versiones anteriores podían mostrar `Cola no reconocida` para esos mensajes; actualizar y esperar la siguiente pasada, conservando el estado existente.
+
+Si persiste después de actualizar, consultar `postcat -eq ID` para el ID afectado y revisar la primera línea. El código 2 indica cobertura incompleta y no equivale a una detección de spam. El calentamiento por sí solo no provoca ese error. Las colas desconocidas o sobres que no corresponden exactamente al mensaje solicitado siguen tratándose como errores.
+
 Los rechazos `milter-reject`/`milter-discard` anteriores a aceptación no se contabilizan como envíos ni se mantienen como transacciones pendientes.
 
 Tampoco se consideran envíos los IDs asignados a sesiones que terminan con RSET o DATA fallido sin aceptación. El seguimiento de esas desconexiones y la distinción entre DATA en curso y cobertura de mensajes aceptados se corrigieron en 0.1.1 tras la simulación histórica.

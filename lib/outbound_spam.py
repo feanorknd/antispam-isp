@@ -30,7 +30,7 @@ from postfix_settings import restart_postfix
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
 TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
@@ -719,8 +719,12 @@ class Envelope:
         self.queue = None
         self.recipients = []
         self.pending_recipients = []
+        # postcat muestra cola/ID o cola/H/.../ID según hash_queue_names/depth.
+        # La cola es siempre el primer componente; exigir el ID completo evita
+        # aceptar prefijos de otro mensaje o cabeceras de otras secciones.
+        header = re.compile(r"\*\*\* ENVELOPE RECORDS (\w+)/(?:[A-Za-z0-9]/)*" + re.escape(qid) + r" \*\*\*")
         for line in text.splitlines():
-            match = re.search(r"ENVELOPE RECORDS (\w+)/" + re.escape(qid), line)
+            match = header.fullmatch(line)
             if match:
                 self.queue = match.group(1)
             if line.startswith("named_attribute: sasl_username="):

@@ -2,16 +2,16 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-## Instalación nueva desde el release 1.2.0
+## Instalación nueva desde el release 1.2.1
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.2.0/outbound-spam-1.2.0.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.2.0/SHA256SUMS
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.2.1/outbound-spam-1.2.1.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.2.1/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf outbound-spam-1.2.0.tar.gz
-sudo ./outbound-spam-1.2.0/install.sh --install-deps
+tar -xzf outbound-spam-1.2.1.tar.gz
+sudo ./outbound-spam-1.2.1/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
@@ -52,13 +52,17 @@ Cuando hay una versión más moderna:
 
 Desde el actualizador 1.0.2 se revisa también la definición systemd existente. Una unidad propia intacta se actualiza con la plantilla del candidato si declara `service_unit_api=1`; se guarda su copia y se ejecuta `daemon-reload`. Se preservan `ExecStart` (incluidos config/ruta de estado), el estado parado/activo y los archivos `.service.d/`. Una unidad base personalizada se conserva y se informa de ello. Si falla `daemon-reload` antes del arranque nuevo se restaura la definición anterior junto con código/estado.
 
-### Actualización desde 1.1.0 a 1.2.0
+### Parche 1.2.1 para colas Postfix con subdirectorios
+
+Ejecutar `--upgrade` normalmente. El parche reconoce las cabeceras de sobres planas y con subdirectorios de hash, conservando configuración, estado, historial, bloqueos y retenciones. No requiere cambiar `hash_queue_names` ni `hash_queue_depth` en Postfix. Los mensajes registrados con sobre incompleto se vuelven a consultar en la siguiente pasada; no borrar SQLite, recovery ni el cursor para aplicar esta corrección. El calentamiento se conserva y sigue siendo informativo.
+
+### Actualización desde 1.1.0 a 1.2.0 o posterior
 
 Se utiliza el `--upgrade` habitual, conservando configuración y estado. Los comandos `--set-custom-limit` y `--set-ignore` quedan disponibles después de actualizar; no requieren cambios previos en la configuración ni reinicio adicional. La actualización por sí sola no añade el bloque de reglas por cuenta: se crea al guardar una regla con los nuevos parámetros.
 
 ### Migración desde 1.0.x a 1.1.0 o posterior
 
-El primer upgrade utiliza todavía el actualizador instalado. Por ello se publica también `antispam-isp-1.2.0.tar.gz`, un paquete de compatibilidad con el mismo código y manifiesto que el principal. El repositorio de GitHub conserva su URL histórica; el nombre operativo del programa y del paquete principal es **outbound-spam**.
+El primer upgrade utiliza todavía el actualizador instalado. Por ello se publica también `antispam-isp-1.2.1.tar.gz`, un paquete de compatibilidad con el mismo código y manifiesto que el principal. El repositorio de GitHub conserva su URL histórica; el nombre operativo del programa y del paquete principal es **outbound-spam**.
 
 La preparación de 1.1.0 traslada el almacenamiento de `/root/scripts/.antispam/` a `/var/lib/outbound-spam/`. Durante el cierre del actualizador antiguo se mantiene un alias transitorio; un finalizador privado espera su bloqueo y la limpieza de la descarga, y retira ese alias y la caché antigua automáticamente. Se registra `migracion_completada` en el log. El código nuevo y el servicio ya utilizan la ubicación nueva, incluso durante ese cierre. El traslado también contempla sistemas de archivos distintos para `/root` y `/var`.
 
@@ -75,8 +79,8 @@ Una actualización no regenera una configuración desaparecida: se cancela antes
 /root/scripts/outbound-spam.conf
 /root/scripts/outbound-spam-status.sh
 /root/scripts/outbound-spam.conf.example
-/var/lib/outbound-spam/current -> releases/1.2.0
-/var/lib/outbound-spam/releases/1.2.0/
+/var/lib/outbound-spam/current -> releases/1.2.1
+/var/lib/outbound-spam/releases/1.2.1/
 /var/lib/outbound-spam/installation.json
 /var/lib/outbound-spam/upgrade.lock
 /var/lib/outbound-spam/upgrade-backup-*/

@@ -1,5 +1,12 @@
 # Cambios efectuados
 
+## 1.2.1 — 2026-10-31
+
+- Corregido el reconocimiento de cabeceras `postcat`: acepta `cola/ID` y `cola/H/.../ID`, con cualquier número de niveles de hash y con IDs cortos/largos.
+- Coincidencia exacta de toda la cabecera y del ID solicitado, conservando la clasificación de colas, identidad SASL y huella de mensaje.
+- Regresiones de bootstrap, mensajes previamente incompletos, cómputo sin duplicados, HOLD, liberación, reencolado, borrado y purga.
+- 185 pruebas correctas por distribución; pruebas reales de colas planas/hasheadas/mixtas y upgrade desde el paquete público 1.2.0.
+
 ## 1.2.0 — 2026-10-31
 
 - `--set-custom-limit CUENTA MAXIMO SEGUNDOS`: guarda/actualiza un límite particular y retira la cuenta de ignorados.
