@@ -1,5 +1,13 @@
 # Cambios efectuados
 
+## 1.2.2 — 2026-11-01
+
+- Estado JSON completo servido por el propio demonio en HTTP, con host y puerto configurables y métricas numéricas para NodePing.
+- Migración de las variables HTTP ausentes durante la preparación del upgrade.
+- Ejecución operativa exclusivamente mediante servicio; eliminadas las opciones de programación antiguas.
+- Estado atrasado recalculado por petición, JSON inválido convertido en error y restauración de la ampliación HTTP ante un upgrade fallido con el nuevo actualizador.
+- 187 pruebas de integración y 9 pruebas HTTP correctas en Focal/Python 3.8 y Noble/Python 3.12, incluidos upgrades reales desde 1.0.0, 1.0.2, 1.1.0, 1.2.0 y 1.2.1.
+
 ## 1.2.1 — 2026-10-31
 
 - Corregido el reconocimiento de cabeceras `postcat`: acepta `cola/ID` y `cola/H/.../ID`, con cualquier número de niveles de hash y con IDs cortos/largos.

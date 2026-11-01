@@ -4,7 +4,7 @@
 
 | Elemento | Versión |
 |---|---|
-| Aplicación | 1.2.1 |
+| Aplicación | 1.2.2 |
 | Esquema SQLite privado (`user_version`) | 3 |
 | Python mínimo | 3.8 |
 | Bash utilizado | 5.0 o posterior en las distribuciones verificadas |
@@ -12,7 +12,16 @@
 
 `VERSION` y `--version` deben coincidir; las pruebas lo comprueban. Las futuras modificaciones incompatibles del esquema deberán introducir una migración y actualizar este documento.
 
-## Matriz de la distribución 1.2.1
+## Matriz de la distribución 1.2.2
+
+| Imagen | Python | Resultado |
+|---|---:|---|
+| Ubuntu Focal 20.04 | 3.8.10 | 187 pruebas de integración + 9 HTTP correctas |
+| Ubuntu Noble 24.04 | 3.12.3 | 187 pruebas de integración + 9 HTTP correctas |
+
+1.2.2 conserva esquema 3 y las API de upgrade y systemd. Añade las variables HTTP ausentes al preparar la actualización con el código candidato, incluso si el upgrade lo ejecuta 1.2.1. La ejecución operativa requiere el demonio.
+
+## Matriz histórica de la distribución 1.2.1
 
 | Imagen | Python | Postfix | Resultado |
 |---|---:|---:|---|

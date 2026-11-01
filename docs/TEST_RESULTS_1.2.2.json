@@ -1,0 +1,19 @@
+{
+  "version": "1.2.2",
+  "date": "2026-11-01",
+  "environments": [
+    {"image": "ubuntu:focal", "python": "3.8.10", "integration_tests": 187, "http_tests": 9, "failures": 0, "skipped": 0},
+    {"image": "ubuntu:noble", "python": "3.12.3", "integration_tests": 187, "http_tests": 9, "failures": 0, "skipped": 0}
+  ],
+  "released_upgraders_tested": ["1.0.0", "1.0.2", "1.1.0", "1.2.0", "1.2.1"],
+  "checks": {
+    "bash_syntax": "passed",
+    "shellcheck_warning": "passed",
+    "daemon_http_lifecycle": "passed",
+    "real_daemon_http_after_worker": "passed",
+    "concurrent_http_atomic_updates": "passed",
+    "invalid_and_stale_status": "passed",
+    "http_config_migration": "passed",
+    "new_upgrader_migration_rollback": "passed"
+  }
+}

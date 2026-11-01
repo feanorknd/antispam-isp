@@ -4,6 +4,8 @@ Los directorios de pruebas y datos de validación se conservan **fuera del repos
 
 ## Pruebas locales
 
+Para el endpoint y la migración HTTP de 1.2.2, ejecutar `python3 tools/test_http_status.py -v`. Las nueve pruebas cubren estado completo, errores, antigüedad, valores no finitos, concurrencia, puerto ocupado, migración idempotente, CLI y ciclo de vida del demonio.
+
 ```bash
 python3 -m unittest discover -s tests -v
 bash -n outbound-spam.sh outbound-spam-status.sh outbound-spam.conf.example
@@ -111,7 +113,11 @@ El cambio de contraseña contra la base ISPConfig real y el reinicio del Monit d
 
 ## Resultado registrado
 
-Fecha de validación de la distribución: **2026-10-31**.
+Fecha de validación de 1.2.2: **2026-11-01**. Resultado: [TEST_RESULTS_1.2.2.json](TEST_RESULTS_1.2.2.json).
+
+Focal/Python 3.8 y Noble/Python 3.12: 187 pruebas completas de integración sin omisiones y 9 pruebas HTTP correctas por entorno. Incluye actualizadores de releases públicos hasta 1.2.1 y petición HTTP al demonio real tras su primera pasada. Bash, ShellCheck y `git diff --check` correctos. La compatibilidad documentada de otras distribuciones corresponde a la matriz histórica siguiente.
+
+### Resultado histórico 1.2.1 (2026-10-31)
 
 Resultado actual: [TEST_RESULTS_1.2.1.json](TEST_RESULTS_1.2.1.json). Se conservan los de [1.2.0](TEST_RESULTS_1.2.0.json), [1.1.0](TEST_RESULTS_1.1.0.json), [1.0.2](TEST_RESULTS_1.0.2.json), [1.0.1](TEST_RESULTS_1.0.1.json), [1.0.0](TEST_RESULTS_1.0.0.json), [0.3.0](TEST_RESULTS_0.3.0.json), [0.2.0](TEST_RESULTS_0.2.0.json), [0.1.1](TEST_RESULTS_0.1.1.json) y [0.1.0](TEST_RESULTS.json).
 

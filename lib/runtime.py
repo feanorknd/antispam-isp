@@ -3,7 +3,9 @@ import base64
 import datetime as dt
 import fcntl
 import hashlib
+import http.server
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -11,6 +13,7 @@ import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 
 
@@ -180,6 +183,24 @@ def validate_config(content, base, parse):
     return parse(proc.stdout), proc.stdout
 
 
+def migrate_http_config(path, base, parse, write_atomic):
+    path = Path(path)
+    original = stable_bytes(path)
+    text = original.decode("utf-8")
+    additions = []
+    for name, value in (("status_http_host", "127.0.0.1"), ("status_http_port", "23456")):
+        if not re.search(r"(?m)^\s*(?:(?:export|declare\s+-[A-Za-z]+)\s+)?" + name + r"\s*=", text):
+            additions.append(name + "=" + value)
+    if not additions:
+        return []
+    updated = original + (b"" if original.endswith(b"\n") else b"\n") + ("\n# Estado HTTP del servicio\n" + "\n".join(additions) + "\n").encode()
+    validate_config(updated, base, parse)
+    if stable_bytes(path) != original:
+        raise ValueError("La configuración cambió durante la migración HTTP")
+    write_atomic(path, updated.decode("utf-8"))
+    return additions
+
+
 def config_record(path, content, serialized):
     return {"path": str(Path(path).absolute()), "data": base64.b64encode(serialized).decode("ascii"),
             "sha256": hashlib.sha256(serialized).hexdigest(), "source_sha256": hashlib.sha256(content).hexdigest()}
@@ -221,6 +242,70 @@ def load_config(path, base, parse, write_atomic, cache_path=None):
         return config, "Configuración no válida; se utiliza la última versión validada: " + str(path)
 
 
+def http_status(directory, stale_after):
+    now = time.time()
+    try:
+        def reject_constant(value):
+            raise ValueError("valor JSON no finito: " + value)
+        summary = json.loads((directory / "status.json").read_text(encoding="utf-8"), parse_constant=reject_constant)
+        if not isinstance(summary, dict) or type(summary.get("code")) is not int or summary["code"] not in (0, 1, 2):
+            raise ValueError("código de estado inválido")
+        last = summary["last_success"]
+        limit = summary["stale_after"]
+        if (isinstance(last, bool) or isinstance(limit, bool) or not isinstance(last, (int, float))
+                or not isinstance(limit, (int, float)) or not math.isfinite(last) or not math.isfinite(limit)):
+            raise ValueError("fechas de estado inválidas")
+        age = now - last
+        if not (-60 <= age <= limit) or limit <= 0:
+            summary["code"] = 2
+            summary["message"] = "Spam Status: ERROR: analizador atrasado o reloj incoherente"
+    except (OSError, ValueError, KeyError, TypeError, OverflowError) as exc:
+        summary = {"code": 2, "message": "Spam Status: ERROR: " + str(exc), "last_success": 0, "stale_after": stale_after}
+        age = -1
+    summary["http_metrics"] = {
+        "code": summary["code"], "last_success_age_seconds": max(0, age) if age != -1 else -1,
+        "warming_up": int(bool(summary.get("warming_up", False))),
+        "incidents": len(summary.get("incidents", [])) if isinstance(summary.get("incidents"), list) else 0,
+        "held": summary.get("held", 0) if type(summary.get("held", 0)) is int else 0,
+        "blocked": len(summary.get("blocked", [])) if isinstance(summary.get("blocked"), list) else 0,
+        "issues": len(summary.get("issues", [])) if isinstance(summary.get("issues"), list) else 0,
+    }
+    return summary
+
+
+class StatusHTTPServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def get_request(self):
+        connection, address = super().get_request()
+        connection.settimeout(5)
+        return connection, address
+
+
+def start_status_http(config, directory):
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/":
+                self.send_error(404)
+                return
+            body = json.dumps(http_status(directory, config["stale_after"]), ensure_ascii=False, allow_nan=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = StatusHTTPServer((config["status_http_host"], config["status_http_port"]), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread
+
+
 def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=None, wait=None):
     directory = Path(config["state_dir"])
     lock_path = directory / "daemon.lock"
@@ -230,6 +315,7 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
             raise ValueError("Bloqueo de servicio no privado/regular")
     spawn = subprocess.Popen if spawn is None else spawn
     stopping = [False]
+    http_server = None
     old_handlers = {}
     def stop(signum, frame):
         stopping[0] = True
@@ -242,6 +328,8 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError:
                 raise ValueError("Ya hay otro demonio para este estado")
+            http_server, http_thread = start_status_http(config, directory)
+            audit("http_iniciado", host=config["status_http_host"], puerto=config["status_http_port"])
             cycles = 0
             audit("servicio_iniciado", mode="servicio", intervalo=config["run_interval"], estado=str(directory))
             while not stopping[0] and (max_cycles is None or cycles < max_cycles):
@@ -279,20 +367,13 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
             write_atomic(directory / "service-status.json", json.dumps({"pid": os.getpid(), "heartbeat": time.time(), "active": False, "stopped": True}))
             audit("servicio_detenido", mode="servicio", pasadas=cycles)
     finally:
+        if http_server is not None:
+            http_server.shutdown()
+            http_server.server_close()
+            http_thread.join()
         for sig, handler in old_handlers.items():
             signal.signal(sig, handler)
     return 0
-
-
-def managed_cron_remove(config):
-    path = Path(config["cron_file"])
-    if not path.exists():
-        return None
-    if path.is_symlink() or "# outbound-spam" not in path.read_text():
-        raise ValueError("El cron no pertenece a outbound-spam: " + str(path))
-    content = path.read_text()
-    path.unlink()
-    return content
 
 
 def render_service(config, base, config_path, exec_start=None):
@@ -343,7 +424,6 @@ def install_service(config, commands, base, config_path, write_atomic):
             code = code.parent
     text = render_service(config, base, config_path)
     previous = path.read_text() if path.exists() else None
-    cron = managed_cron_remove(config)
     try:
         write_atomic(path, text, 0o644)
         commands.run("systemctl", ["daemon-reload"])
@@ -360,11 +440,9 @@ def install_service(config, commands, base, config_path, write_atomic):
                 path.unlink()
         else:
             write_atomic(path, previous, 0o644)
-        if cron is not None:
-            write_atomic(Path(config["cron_file"]), cron, 0o644)
         commands.run("systemctl", ["daemon-reload"])
         raise
-    return "Servicio instalado y habilitado; espera %d s al terminar cada pasada; cron gestionado retirado" % config["run_interval"]
+    return "Servicio instalado y habilitado; espera %d s al terminar cada pasada" % config["run_interval"]
 
 
 def uninstall_service(config, commands):

@@ -114,7 +114,7 @@ La operación guarda los límites, crea/actualiza un bloque Ratelimits delimitad
 ## 5. Primera lectura
 
 ```bash
-/root/scripts/outbound-spam.sh --run
+/root/scripts/outbound-spam.sh --install-service
 ```
 
 Por defecto, `initial_position=end` comienza al final de `mail.log` y reconstruye las cuentas autenticadas que aún están en la cola. Monit indicará calentamiento hasta haber cubierto la ventana máxima: faltan los mensajes ya entregados antes de arrancar.
@@ -124,7 +124,8 @@ Desde 1.0.2 ese calentamiento se muestra con código correcto (0), fecha humana 
 Para comenzar por el principio del fichero actual al crear un estado nuevo:
 
 ```bash
-/root/scripts/outbound-spam.sh --run --from-start
+# Antes de iniciar el servicio con un estado nuevo, configurar:
+initial_position=start
 ```
 
 Esto no reinicia un cursor existente. La lectura está acotada por `max_read_bytes`; si hay atraso se indicará como error operativo y se continuará en la siguiente ejecución. Los picos históricos ya fuera de la ventana no provocan cambios de contraseña ni otras acciones. Un exceso que siga dentro de la ventana actual sí puede abrir un incidente.
@@ -137,7 +138,7 @@ Esto no reinicia un cursor existente. La lectura está acotada por `max_read_byt
 systemctl status outbound-spam.service
 ```
 
-La unidad ejecuta el propio script en modo `--daemon`. Espera **60 segundos después de terminar cada pasada**, sin solapamientos. Retira el cron gestionado por la aplicación; las entradas manuales en otros crontabs deben retirarse manualmente. `flock` coordina el servicio con ejecuciones puntuales y administrativas. Guía completa: [SERVICE.md](SERVICE.md).
+La unidad ejecuta el propio script en modo `--daemon`. Espera **60 segundos después de terminar cada pasada**, sin solapamientos. Retirar las programaciones antiguas del servidor. `flock` coordina el servicio con las operaciones administrativas. Guía completa: [SERVICE.md](SERVICE.md).
 
 El instalador de Monit utiliza estos directorios, que deben existir:
 
@@ -180,4 +181,4 @@ Para retirar servicio y monitor:
 /root/scripts/outbound-spam.sh --uninstall-monit
 ```
 
-Se conservan los datos, restricciones y mensajes retenidos. El modo cron queda disponible para instalaciones antiguas mediante `--install-cron`/`--uninstall-cron`, sin instalarlo a la vez que la unidad.
+Se conservan los datos, restricciones y mensajes retenidos.

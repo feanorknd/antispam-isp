@@ -45,9 +45,9 @@ Referencia oficial: [default_transport_rate_delay](https://www.postfix.org/postc
 /root/scripts/outbound-spam.sh --configure-postfix --destination-delay 10s
 ```
 
-Si `main.cf` no contiene ajustes previos de este grupo, se pregunta si se crea el bloque y se reinicia Postfix. Responder no conserva los ajustes del analizador, pero no escribe el bloque. Sin terminal, se debe elegir `--yes` o `--skip-postfix`; cron nunca formula preguntas ni edita Postfix al ejecutar `--run`.
+Si `main.cf` no contiene ajustes previos de este grupo, se pregunta si se crea el bloque y se reinicia Postfix. Responder no conserva los ajustes del analizador, pero no escribe el bloque. Sin terminal, se debe elegir `--yes` o `--skip-postfix`.
 
-Con `--run --max-sent N --time-period S` se aplican valores únicamente a esa ejecución. Para persistirlos y coordinar Postfix, utilizar la operación administrativa sin `--run`.
+Para persistir los valores y coordinar Postfix, utilizar la operación administrativa de configuración.
 
 Se guardan respaldos privados de ambos archivos antes de cambiarlos. Si falla la validación se restauran sin reiniciar; si falla el reinicio se restauran y se intenta arrancar con la configuración anterior. La instancia estándar `/etc/postfix` se reinicia mediante `systemctl restart postfix`. Una ruta de configuración alternativa usa `postfix -c RUTA stop/start`, para no reiniciar una instancia ajena.
 

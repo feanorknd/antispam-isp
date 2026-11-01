@@ -93,6 +93,8 @@ La caché `/var/lib/outbound-spam/ARCHIVO.conf.last-good.json` contiene valores 
 | `command_timeout` | `30` | Tiempo máximo de cada comando externo/conexión SMTP |
 | `stale_after` | `180` | Segundos sin ejecución correcta antes de marcar error |
 | `run_interval` | `60` | Descanso del servicio después de terminar una pasada |
+| `status_http_host` | `127.0.0.1` | Dirección IPv4 del listener HTTP del servicio |
+| `status_http_port` | `23456` | Puerto TCP del estado JSON en `/` |
 | `lock_wait` | `120` | Espera máxima de administración; `--lock-wait` permite otra espera |
 | `service_unit` | `/etc/systemd/system/outbound-spam.service` | Unidad de systemd gestionada |
 | `backup_interval` | `300` | Intervalo mínimo entre copias SQLite consistentes |
@@ -105,6 +107,8 @@ La caché `/var/lib/outbound-spam/ARCHIVO.conf.last-good.json` contiene valores 
 Las correlaciones de mensajes aún activos y las evidencias de los incidentes se conservan. Los informes e incidentes requieren una política de archivo del administrador; la versión inicial no los elimina automáticamente. No se ejecuta un `VACUUM` completo cada minuto.
 
 `stale_after` tiene un mínimo efectivo de `run_interval + 120`. Una pasada excepcionalmente larga puede indicar análisis atrasado en Monit, aunque el servicio esté trabajando: no se crea otra en paralelo para compensarlo.
+
+La dirección y puerto HTTP se aplican al reiniciar el servicio. El endpoint muestra el estado completo; proteger el acceso externamente. Véase [SERVICE.md](SERVICE.md#estado-http-y-nodeping).
 
 ## Clasificación externa
 
@@ -171,7 +175,7 @@ Cambiar la contraseña afecta también a la autenticación para correo local/IMA
 
 ## Rutas de integración
 
-El ejemplo permite configurar las rutas de todos los ejecutables y los archivos de Postfix, cron y Monit. `guard_map` es el prefijo de `.cf`, `-recipient.cf` y `.sqlite3`.
+El ejemplo permite configurar las rutas de todos los ejecutables y los archivos de Postfix y Monit. `guard_map` es el prefijo de `.cf`, `-recipient.cf` y `.sqlite3`.
 
 Los archivos de integración pertenecen a `root:postfix`, modo `0640`, y contienen cuentas y rutas, sin contraseñas. Los informes, hashes temporales de acciones, evidencias y contadores permanecen en la base privada `0600`.
 

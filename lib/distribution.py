@@ -400,6 +400,7 @@ def _service_active(config, commands):
 
 
 def _snapshot_state(config, config_path, backup):
+    shutil.copy2(str(config_path), str(backup / "config.before"))
     state = Path(config["state_dir"])
     for name in ("state.sqlite3", "state.sqlite3-wal", "state.sqlite3-shm", "status.json", "recovery"):
         path = state / name
@@ -418,6 +419,14 @@ def _restore_state(config, config_path, backup):
     failed = backup / "failed-state"
     failed.mkdir(mode=0o700, exist_ok=True)
     state = Path(config["state_dir"])
+    saved_config = backup / "config.before"
+    if saved_config.exists() and Path(config_path).is_file():
+        original = saved_config.read_text()
+        current = Path(config_path).read_text()
+        # Restaurar únicamente nuestra ampliación; conservar una edición externa.
+        suffix = current[len(original):] if current.startswith(original) else ""
+        if re.fullmatch(r"\n?\n# Estado HTTP del servicio\n(?:status_http_(?:host=127\.0\.0\.1|port=23456)\n){1,2}", suffix):
+            write(config_path, original)
     for name in ("state.sqlite3", "state.sqlite3-wal", "state.sqlite3-shm", "status.json", "recovery"):
         current, saved = state / name, backup / name
         if current.exists():

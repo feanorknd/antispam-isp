@@ -2,7 +2,7 @@
 
 | Documento | Contenido |
 |---|---|
-| [INSTALLATION.md](INSTALLATION.md) | Dependencias, copia de archivos, cron, Monit y bloqueo SMTP |
+| [INSTALLATION.md](INSTALLATION.md) | Dependencias, copia de archivos, servicio, Monit y bloqueo SMTP |
 | [CONFIGURATION.md](CONFIGURATION.md) | Variables, arrays, umbrales y acciones |
 | [OPERATIONS.md](OPERATIONS.md) | Comandos, informes, retenciones, desbloqueo y recuperación |
 | [LOGGING.md](LOGGING.md) | Registro operativo privado, hora local y rotación semanal |

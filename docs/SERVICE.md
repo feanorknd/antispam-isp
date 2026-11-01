@@ -16,9 +16,7 @@ Se instala `/etc/systemd/system/outbound-spam.service`, se ejecuta `daemon-reloa
 ExecStart=/bin/bash /root/scripts/outbound-spam.sh --config /root/scripts/outbound-spam.conf --state-dir /var/lib/outbound-spam --daemon
 ```
 
-La instalación exige código de root en una ruta no modificable por otros. Utiliza el cron y el nombre de unidad establecidos en la configuración; no sobrescribe archivos ajenos.
-
-El instalador retira `/etc/cron.d/outbound-spam` si pertenece a esta aplicación. Las entradas añadidas manualmente en otros crontabs se retiran manualmente. Un bloqueo sigue evitando ejecuciones simultáneas incluso si quedara una llamada externa.
+La instalación exige código de root en una ruta no modificable por otros y usa el nombre de unidad configurado; no sobrescribe archivos ajenos. La ejecución operativa requiere el servicio. Retirar las programaciones antiguas que pudieran quedar en el servidor.
 
 ## Funcionamiento
 
@@ -30,7 +28,33 @@ La unidad es `Type=simple`, con `Restart=on-failure` y `RestartSec=60`. El modo 
 
 Una pasada de 20 segundos produce un intervalo aproximado de 80 segundos entre inicios. No hay cola de trabajos ni ejecuciones simultáneas. Las alertas o errores del trabajador no terminan el bucle: se reflejan en el estado y se vuelve a intentar tras el descanso.
 
-Hay dos bloqueos: `daemon.lock` impide dos demonios sobre el mismo estado y `lock` coordina cada pasada con los comandos administrativos. Los comandos manuales esperan hasta `lock_wait` segundos (120 por defecto); se puede indicar `--lock-wait 600`. Una ejecución puntual `--run` sin espera explícita omite el trabajo si hay otro en curso.
+Hay dos bloqueos: `daemon.lock` impide dos demonios sobre el mismo estado y `lock` coordina cada pasada con los comandos administrativos. Los comandos manuales esperan hasta `lock_wait` segundos (120 por defecto); se puede indicar `--lock-wait 600`.
+
+## Estado HTTP y NodePing
+
+El demonio escucha mientras está activo, incluso durante una pasada, en la dirección IPv4 y el puerto configurados:
+
+```bash
+status_http_host=127.0.0.1
+status_http_port=23456
+curl -fsS http://127.0.0.1:23456/
+```
+
+El `GET /` devuelve HTTP 200 y el JSON completo de estado, incluidos cuentas y detalles. El servidor no cifra ni autentica las peticiones; por defecto solo escucha localmente. Para consultas externas usar un proxy inverso HTTPS y proteger el acceso. Cambiar dirección o puerto requiere `systemctl restart outbound-spam.service`; si no se puede abrir el puerto, el servicio falla al arrancar. Otros paths devuelven 404.
+
+El campo `code` se recalcula en cada petición: 0 sano (incluido calentamiento), 1 incidente/retención/bloqueo y 2 error o estado ausente, inválido o atrasado. Se añade `http_metrics` con campos numéricos para NodePing: `code`, `last_success_age_seconds` (-1 si no se puede leer), `warming_up` (0/1), `incidents`, `held`, `blocked` e `issues`. El contenido detallado original permanece en el JSON. Cada campo numérico existente, incluidos campos de objetos y arrays mediante rutas como `incidents.0.peak`, puede evaluarse con HTTP Parse; los textos y booleanos no son valores numéricos para sus reglas de rango y los arrays vacíos no tienen elementos indexables.
+
+En NodePing crear un check **HTTP Parse**, indicar la URL del proxy y añadir `http_metrics.code` con mínimo 0 y máximo 0. Se pueden añadir otros campos y rangos; si falta alguno, el check falla. NodePing también falla si no puede conectar. El check HTTP Parse no valida el certificado TLS: añadir un check SSL si se quiere supervisarlo.
+
+Ejemplo dentro del `server` HTTPS de Nginx:
+
+```nginx
+location = /spam-status {
+    proxy_pass http://127.0.0.1:23456/;
+    proxy_set_header Host $host;
+    proxy_buffering off;
+}
+```
 
 ## Administración habitual
 
@@ -96,5 +120,3 @@ Si no hay ninguna configuración inicial válida ni caché verificable, el proce
 El primer comando detiene y deshabilita la unidad y retira su archivo. El segundo retira únicamente `Spam_Status` y su comprobador, valida Monit y lo reinicia conservando los demás monitores.
 
 Ambas operaciones conservan SQLite, evidencias, bloqueos Postfix y mensajes retenidos. Para resolver una cuenta se usan los comandos de cola descritos en [OPERATIONS.md](OPERATIONS.md). Para retirar también la integración Postfix existe `--uninstall-postfix-guard`.
-
-El modo cron se conserva por compatibilidad. `--install-cron` rechaza instalar una segunda programación si existe la unidad gestionada; `--uninstall-cron` retira solo el cron propio.

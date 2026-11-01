@@ -5,7 +5,6 @@ Los ejemplos asumen el script instalado en `/root/scripts/outbound-spam.sh`.
 ## Consulta y ejecución
 
 ```bash
-/root/scripts/outbound-spam.sh --run
 /root/scripts/outbound-spam.sh --status
 /root/scripts/outbound-spam.sh --doctor
 ```
@@ -16,7 +15,6 @@ Los ejemplos asumen el script instalado en `/root/scripts/outbound-spam.sh`.
 
 | Comando | `0` | `1` | `2` |
 |---|---|---|---|
-| `--run` | Lectura completada, con o sin incidente | — | Error operativo/cobertura incompleta |
 | `--status` | Sano | Incidente, retención o bloqueo | Error o estado atrasado |
 | Comprobador Monit | Sano | Incidente, retención o bloqueo | Error, estado ausente o atrasado |
 
@@ -24,7 +22,7 @@ El calentamiento por sí solo es informativo y devuelve 0. `warming_up` e `info`
 
 `--help` incluye la explicación de cada operación y una guía de respuesta a incidentes con ejemplos sencillos. El mismo comando puede invocarse desde un enlace a su lanzador estable, sin depender del directorio actual.
 
-Si otra ejecución mantiene el bloqueo, `--run` termina sin duplicar trabajo; Monit detectará un proceso permanentemente atascado por la antigüedad del resumen.
+El servicio coordina sus pasadas mediante un bloqueo; Monit y el endpoint HTTP detectan un analizador permanentemente atascado por la antigüedad del resumen.
 
 El servicio ejecuta pasadas secuenciales y espera 60 segundos desde el final. Los comandos administrativos esperan el bloqueo; `--lock-wait 600` permite ampliar esa espera. No necesitan parar el servicio para actuar sobre la cola.
 
@@ -126,7 +124,7 @@ Para evitar que la actividad legítima vuelva a superar el umbral, corregir ante
 | Acción de contraseña fallida | Verificar formato de hash, fila ISPConfig, socket MySQL y `doveadm` |
 | Acción SMTP fallida | Comprobar `postfix-sqlite`, `proxy_read_maps` e integración instalada |
 | Aviso por sendmail atrasado | Revisar la cola o utilizar un canal SMTP directo para informes |
-| Estado atrasado en Monit | Revisar cron, permisos, bloqueo de ejecución y errores del script |
+| Estado atrasado en Monit | Revisar el servicio, permisos, bloqueo de ejecución y errores del script |
 
 ### «Cola no reconocida» y subdirectorios Postfix
 
@@ -162,13 +160,5 @@ systemctl status outbound-spam.service
 ```
 
 La instalación/desinstalación y la edición con nano se describen en [SERVICE.md](SERVICE.md). La recuperación automática se describe en [RECOVERY.md](RECOVERY.md).
-
-### Cron para instalaciones anteriores
-
-La tarea de cron instalada es:
-
-```cron
-* * * * * root /root/scripts/outbound-spam.sh --config /root/scripts/outbound-spam.conf --run --quiet
-```
 
 Monit ejecuta su comprobador en sus propios ciclos y no analiza de nuevo `mail.log`. Los recordatorios son generados por el analizador según `reminder_interval`. Los comandos de instalación se ejecutan en cada servidor de destino.

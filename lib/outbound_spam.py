@@ -30,7 +30,7 @@ from postfix_settings import restart_postfix
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "1.2.1"
+VERSION = "1.2.2"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
 TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
@@ -134,12 +134,14 @@ class Config:
         self.v.setdefault("backup_interval", 300)
         self.v.setdefault("integrity_interval", 300)
         self.v.setdefault("backup_copies", 3)
+        self.v.setdefault("status_http_host", "127.0.0.1")
+        self.v.setdefault("status_http_port", 23456)
         if self.v.get("systemctl_bin") == "/usr/bin/systemctl" and not os.path.exists("/usr/bin/systemctl") and os.path.exists("/bin/systemctl"):
             self.v["systemctl_bin"] = "/bin/systemctl"
         integers = ("max_sent", "time_period", "max_read_bytes", "command_timeout", "stale_after",
                     "rotation_grace", "retention_days", "max_action_age", "reminder_interval",
                     "sample_count", "smtp_port", "ispconfig_server_id", "foreign_sender_divisor", "postfix_headroom",
-                    "run_interval", "lock_wait", "backup_interval", "integrity_interval", "backup_copies")
+                    "run_interval", "lock_wait", "backup_interval", "integrity_interval", "backup_copies", "status_http_port")
         for k in integers:
             try:
                 self.v[k] = int(self.v[k])
@@ -147,6 +149,13 @@ class Config:
                     raise ValueError()
             except (KeyError, ValueError, TypeError):
                 raise MonitorError("Configuración: entero positivo requerido: " + k)
+        import ipaddress
+        try:
+            ipaddress.IPv4Address(self.v["status_http_host"])
+        except (ValueError, TypeError):
+            raise MonitorError("status_http_host debe ser una dirección IPv4")
+        if self.v["status_http_port"] > 65535:
+            raise MonitorError("status_http_port debe estar entre 1 y 65535")
         for k in ("notify", "block_smtp", "hold_queue", "reset_password"):
             if str(self.v.get(k)).lower() not in ("true", "false"):
                 raise MonitorError("Configuración: booleano true/false requerido: " + k)
@@ -179,8 +188,6 @@ class Config:
         if not re.fullmatch(r"\d+[smhdw]?", str(self.v["postfix_destination_delay"])):
             raise MonitorError("postfix_destination_delay debe ser una duración Postfix")
         self.v["stale_after"] = max(self.v["stale_after"], self.v["run_interval"] + 120)
-        if self.v["stale_after"] < 120:
-            raise MonitorError("stale_after debe ser al menos 120 segundos para cron cada minuto")
         if self.v["retention_days"] * 86400 < self.max_period + self.v["max_action_age"]:
             raise MonitorError("retention_days debe cubrir la ventana máxima y max_action_age")
         for key in ("alert_from",):
@@ -190,7 +197,7 @@ class Config:
         if self.v["notify"] and not self.v.get("report"):
             raise MonitorError("report no puede estar vacío si notify=true")
         for key in ("log_file", "state_dir", "postfix_config", "guard_map", "monit_config",
-                    "monit_enabled", "monit_script", "cron_file", "service_unit"):
+                    "monit_enabled", "monit_script", "service_unit"):
             if not os.path.isabs(self.v.get(key, "")):
                 raise MonitorError(key + " debe ser una ruta absoluta")
         if self.v.get("smtp_security") not in ("plain", "starttls", "tls"):
@@ -1483,20 +1490,6 @@ def install_monit(config, commands, base):
     return "Spam_Status instalado, Monit habilitado y reiniciado"
 
 
-def install_cron(config, base, config_path):
-    if Path(config["service_unit"]).exists():
-        raise MonitorError("Retire el servicio con --uninstall-service antes de instalar cron")
-    script = base / "outbound-spam.sh"
-    if any(re.search(r"[^A-Za-z0-9_./-]", p) for p in (str(script), config_path)):
-        raise MonitorError("Las rutas de cron deben carecer de espacios y metacaracteres")
-    path = Path(config["cron_file"])
-    if path.exists() and "# outbound-spam" not in path.read_text():
-        raise MonitorError("El archivo cron ya existe y no pertenece a outbound-spam")
-    text = "# outbound-spam: cada minuto; los errores operativos se envían también por cron\nSHELL=/bin/bash\nPATH=/usr/sbin:/usr/bin:/sbin:/bin\n* * * * * root %s --config %s --run --quiet\n" % (script, config_path)
-    atomic_write(path, text, 0o644)
-    return "Cron instalado para ejecución cada minuto"
-
-
 def uninstall_monit(config, commands):
     target, enabled, script = (Path(config[k]) for k in ("monit_config", "monit_enabled", "monit_script"))
     if not target.exists() and not enabled.is_symlink():
@@ -1896,11 +1889,11 @@ def cli():
                       help="Guardar límite particular de destinatarios externos; sustituir el anterior y retirar de ignore")
     mode.add_argument("--set-ignore", metavar="CUENTA", help="Guardar cuenta ignorada y eliminar su límite particular")
     mode.add_argument("--configure-postfix", action="store_true", help="Instalar/actualizar el bloque Ratelimits coordinado")
-    mode.add_argument("--run", action="store_true", help="Leer lo nuevo, evaluar límites y ejecutar las acciones habilitadas una vez")
+    mode.add_argument("--run", action="store_true", help=argparse.SUPPRESS)
     mode.add_argument("--daemon", action="store_true", help="Proceso del servicio systemd; espera entre pasadas completas")
     mode.add_argument("--upgrade", action="store_true", help="Descargar/verificar el release estable; conservar config/estado y actualizar unidad propia intacta")
     mode.add_argument("--prepare-upgrade", action="store_true", help=argparse.SUPPRESS)
-    mode.add_argument("--install-service", action="store_true", help="Crear/habilitar/iniciar la unidad systemd y retirar el cron propio")
+    mode.add_argument("--install-service", action="store_true", help="Crear, habilitar e iniciar la unidad systemd")
     mode.add_argument("--uninstall-service", action="store_true", help="Detener y retirar la unidad, conservando datos, bloqueos y HOLD")
     mode.add_argument("--replay", metavar="LOG", help="Análisis offline aislado, sin órdenes Postfix/SQL ni notificaciones")
     mode.add_argument("--status", action="store_true", help="Mostrar estado y fechas locales: código 0 sano/calentamiento, 1 alerta, 2 error")
@@ -1909,8 +1902,6 @@ def cli():
     mode.add_argument("--uninstall-monit", action="store_true", help="Retirar solo el monitor Spam_Status y su comprobador")
     mode.add_argument("--install-postfix-guard", action="store_true", help="Instalar/migrar el bloqueo por SASL/destinatario; validar y reiniciar Postfix")
     mode.add_argument("--uninstall-postfix-guard", action="store_true", help="Restaurar restricciones anteriores; requiere no tener cuentas bloqueadas")
-    mode.add_argument("--install-cron", action="store_true", help="Programación cron antigua; incompatible con la unidad gestionada instalada")
-    mode.add_argument("--uninstall-cron", action="store_true", help="Eliminar únicamente el archivo cron gestionado por esta aplicación")
     operations = {
         "list-held": "Listar los mensajes que el monitor tiene registrados como HOLD de la cuenta",
         "release-held": "Liberar/reencolar retenciones propias; conservar bloqueo e incidente",
@@ -1925,7 +1916,7 @@ def cli():
         mode.add_argument("--" + option, metavar="CUENTA", help=explanation)
     args = p.parse_args()
     selected = any(getattr(args, k) for k in ("run", "daemon", "upgrade", "prepare_upgrade", "install_service", "uninstall_service", "replay", "status", "doctor", "install_monit", "uninstall_monit", "install_postfix_guard",
-                   "uninstall_postfix_guard", "install_cron", "uninstall_cron", "list_held", "release_held", "delete_held", "unblock", "ack", "set_limits", "configure_postfix", "purge_user_queue", "resolve_user", "block_user", "set_custom_limit", "set_ignore"))
+                   "uninstall_postfix_guard", "list_held", "release_held", "delete_held", "unblock", "ack", "set_limits", "configure_postfix", "purge_user_queue", "resolve_user", "block_user", "set_custom_limit", "set_ignore"))
     if not selected:
         if args.max_sent is not None or args.time_period is not None:
             args.set_limits = True
@@ -1952,6 +1943,8 @@ def cli():
 
 def _main(parser, args):
     os.umask(0o077)
+    if args.run and os.environ.get("OUTBOUND_SPAM_SERVICE") != "1":
+        raise MonitorError("La ejecución operativa requiere el servicio --daemon")
     base = Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent))
     code_base = Path(os.environ.get("OUTBOUND_SPAM_CODE", base))
     config_warning = None
@@ -2048,10 +2041,6 @@ def _main(parser, args):
     if args.uninstall_monit:
         print(uninstall_monit(config, commands))
         return 0
-    if args.uninstall_cron:
-        runtime.managed_cron_remove(config)
-        print("Cron gestionado retirado")
-        return 0
     private_file(directory / "lock")
     if args.upgrade_lock_fd is not None:
         inherited = os.fstat(args.upgrade_lock_fd)
@@ -2113,6 +2102,9 @@ def _main(parser, args):
                 store.persist_critical()
                 if recovery:
                     recovery.backup(store, force=True)
+                if config_warning:
+                    raise MonitorError(config_warning + "; corrija la configuración antes de actualizar")
+                runtime.migrate_http_config(args.config_path, code_base, parse_profile, atomic_write)
                 from distribution import legacy_prepare
                 legacy_prepare(code_base, args.config_path)
                 print(json.dumps({"version": VERSION, "schema_version": store.db.execute("PRAGMA user_version").fetchone()[0], "prepared": True}))
@@ -2128,8 +2120,6 @@ def _main(parser, args):
                 print(install_guard(config, commands, store))
             elif args.uninstall_postfix_guard:
                 print(uninstall_guard(config, commands, store))
-            elif args.install_cron:
-                print(install_cron(config, base, args.config_path))
             elif not (args.run or args.replay):
                 print(manage(store, config, commands, args, now))
                 old = store.get("current", {})
@@ -2206,7 +2196,7 @@ def _main(parser, args):
                         print(summary["message"], file=sys.stderr)
                     if recovery:
                         recovery.backup(store)
-                    # Un incidente no hace fallar cron; los errores operativos sí.
+                    # Un incidente no hace fallar el trabajador; los errores operativos sí.
                     return 2 if summary["code"] == 2 else 0
                 except Exception as e:
                     with contextlib.suppress(sqlite3.Error):
@@ -2251,7 +2241,7 @@ def main():
     operation = next(("--" + key.replace("_", "-") for key, value in vars(args).items()
                       if value and key in ("run", "daemon", "upgrade", "status", "doctor", "prepare_upgrade",
                       "set_limits", "configure_postfix", "install_service", "uninstall_service", "install_monit",
-                      "uninstall_monit", "install_cron", "uninstall_cron", "install_postfix_guard",
+                      "uninstall_monit", "install_postfix_guard",
                       "uninstall_postfix_guard", "list_held", "release_held", "delete_held", "unblock", "ack",
                       "purge_user_queue", "resolve_user", "block_user", "set_custom_limit", "set_ignore")), "consulta")
     target = next((getattr(args, key) for key in ("list_held", "release_held", "delete_held", "unblock", "ack",

@@ -1,6 +1,6 @@
 # Tareas y programación
 
-Actualizado: **2026-10-31**, versión 1.2.1.
+Actualizado: **2026-11-01**, versión 1.2.2.
 
 ## Completadas
 
@@ -77,7 +77,7 @@ Actualizado: **2026-10-31**, versión 1.2.1.
 
 ## En ejecución
 
-Ninguna tarea de publicación pendiente. Release: https://github.com/feanorknd/antispam-isp/releases/tag/v1.2.1 .
+Publicación de 1.2.2: endpoint HTTP integrado, migración de configuración, retirada de programación antigua y validación de 187 + 9 pruebas en Focal y Noble. Notas: [RELEASE_1.2.2.md](RELEASE_1.2.2.md).
 
 ## Programadas por el software, al instalarlo en el servidor
 
