@@ -74,10 +74,11 @@ Actualizado: **2026-11-01**, versión 1.2.2.
 - [x] Corregir lectura de sobres con subdirectorios Postfix, con ID exacto y profundidad independiente de la configuración.
 - [x] Verificar 185 pruebas por distribución, incluidas colas reales y upgrade desde 1.2.0.
 - [x] Publicar 1.2.1 y verificar sin autenticación el descubrimiento desde 1.2.0/1.1.0/1.0.2, los checksums y el parser de los paquetes descargados.
+- [x] Publicar 1.2.2 tras 187 pruebas de integración y 9 HTTP en Focal y Noble; comprobar API pública, checksums, manifiestos y descubrimiento con los actualizadores 1.0.2/1.1.0/1.2.1.
 
 ## En ejecución
 
-Publicación de 1.2.2: endpoint HTTP integrado, migración de configuración, retirada de programación antigua y validación de 187 + 9 pruebas en Focal y Noble. Notas: [RELEASE_1.2.2.md](RELEASE_1.2.2.md).
+Ninguna tarea de publicación pendiente. Release estable verificado: https://github.com/feanorknd/antispam-isp/releases/tag/v1.2.2 . Notas: [RELEASE_1.2.2.md](RELEASE_1.2.2.md).
 
 ## Programadas por el software, al instalarlo en el servidor
 

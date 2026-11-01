@@ -117,6 +117,8 @@ Fecha de validación de 1.2.2: **2026-11-01**. Resultado: [TEST_RESULTS_1.2.2.js
 
 Focal/Python 3.8 y Noble/Python 3.12: 187 pruebas completas de integración sin omisiones y 9 pruebas HTTP correctas por entorno. Incluye actualizadores de releases públicos hasta 1.2.1 y petición HTTP al demonio real tras su primera pasada. Bash, ShellCheck y `git diff --check` correctos. La compatibilidad documentada de otras distribuciones corresponde a la matriz histórica siguiente.
 
+Después de publicar v1.2.2 se verificaron sin autenticación la API `/releases/latest`, las descargas, ambos checksums y los manifiestos idénticos con los actualizadores públicos 1.0.2, 1.1.0 y 1.2.1. Todos descubren 1.2.2 y el código descargado entrega el JSON de error esperado cuando no hay estado.
+
 ### Resultado histórico 1.2.1 (2026-10-31)
 
 Resultado actual: [TEST_RESULTS_1.2.1.json](TEST_RESULTS_1.2.1.json). Se conservan los de [1.2.0](TEST_RESULTS_1.2.0.json), [1.1.0](TEST_RESULTS_1.1.0.json), [1.0.2](TEST_RESULTS_1.0.2.json), [1.0.1](TEST_RESULTS_1.0.1.json), [1.0.0](TEST_RESULTS_1.0.0.json), [0.3.0](TEST_RESULTS_0.3.0.json), [0.2.0](TEST_RESULTS_0.2.0.json), [0.1.1](TEST_RESULTS_0.1.1.json) y [0.1.0](TEST_RESULTS.json).
