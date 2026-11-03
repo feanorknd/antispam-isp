@@ -89,10 +89,11 @@ Actualizado: **2026-11-03**, versión 1.3.2.
 - [x] Corregir alias ISPConfig con system_user NULL, manteniendo la herencia por padre y los pools independientes.
 - [x] Añadir errores con fila/ID/campo y regresiones públicas de los casos reportados en dos servidores.
 - [x] Verificar 219 pruebas completas y 30 públicas en Focal/Noble, incluido doctor después del actualizador 1.3.1; comprobar la consulta con MariaDB real y esquema nullable.
+- [x] Publicar 1.3.2 y verificar descargas, checksums, manifiestos y ejecución del fix NULL desde ambos paquetes públicos; comprobar actualizadores 1.0.2/1.3.0/1.3.1 y construcción reproducible.
 
 ## En ejecución
 
-Publicación y verificación pública de 1.3.2 en curso. Notas: [RELEASE_1.3.2.md](RELEASE_1.3.2.md). La batería de validación ISPConfig sigue en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
+Ninguna tarea de publicación pendiente. Release estable verificado: https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.2 . Notas: [RELEASE_1.3.2.md](RELEASE_1.3.2.md). La batería de validación ISPConfig sigue en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
 ## Programadas por el software, al instalarlo en el servidor
 

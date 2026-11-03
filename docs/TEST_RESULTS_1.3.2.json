@@ -15,6 +15,19 @@
   },
   "released_upgraders_tested": ["1.0.0", "1.0.2", "1.1.0", "1.2.0", "1.2.1", "1.2.2", "1.3.0", "1.3.1"],
   "network_during_native_tests": "none",
+  "public_release": {
+    "url": "https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.2",
+    "source_commit": "590bb3ffc8c539b9058ce3b2594684631a0ec511",
+    "unauthenticated_verification": "passed",
+    "upgraders": ["1.0.2", "1.3.0", "1.3.1"],
+    "identical_manifests": true,
+    "downloaded_null_fix_executed": true,
+    "reproducible_build": true,
+    "sha256": {
+      "outbound-spam-1.3.2.tar.gz": "7a65fb5d8e9e9c5111fe65409b62d46b79d55a0ebf94eefbcb74ec6784227e30",
+      "antispam-isp-1.3.2.tar.gz": "59a059d6d1a09ed7903d7dfa4b4fce54a4fb7b490a9d31eb88587834bc5ae0bb"
+    }
+  },
   "checks": {
     "sql_null_system_user_inherits_parent_domains": "passed",
     "empty_user_and_nested_aliases": "passed",
