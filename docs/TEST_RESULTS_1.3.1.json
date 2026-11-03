@@ -7,6 +7,18 @@
   ],
   "released_upgraders_tested": ["1.0.0", "1.0.2", "1.1.0", "1.2.0", "1.2.1", "1.2.2", "1.3.0"],
   "network_during_native_tests": "none",
+  "public_release": {
+    "url": "https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.1",
+    "source_commit": "f60ee600550dea5c89235e65ec049f7df914b022",
+    "unauthenticated_verification": "passed",
+    "upgraders": ["1.0.2", "1.1.0", "1.2.2", "1.3.0"],
+    "identical_manifests": true,
+    "reproducible_build": true,
+    "sha256": {
+      "outbound-spam-1.3.1.tar.gz": "7a22bee90b6c65e75165907c42c32d05b333360cf888e3b00324f80f82f110db",
+      "antispam-isp-1.3.1.tar.gz": "881408bd1a8b279e8d9236dc674041ce1e374d7c1d37e22d9571dd2300c3e056"
+    }
+  },
   "checks": {
     "all_example_and_engine_variables_present": "passed",
     "old_missing_variables_added_without_template_change": "passed",

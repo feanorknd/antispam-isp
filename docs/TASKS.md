@@ -85,10 +85,11 @@ Actualizado: **2026-11-03**, versión 1.3.1.
 - [x] Completar también con versión ya actualizada y sincronizar el ejemplo sin reiniciar servicios.
 - [x] Añadir pruebas públicas de idempotencia, futuros campos, arrays, conservación, caché, permisos, concurrencia y rollback.
 - [x] Verificar integración en Focal/Noble, upgrades históricos y el caso real de 1.3.0 con ambas variables locales ausentes.
+- [x] Publicar 1.3.1, comprobar API latest y descargas sin autenticación con los actualizadores 1.0.2/1.1.0/1.2.2/1.3.0, y reproducir los checksums del paquete.
 
 ## En ejecución
 
-Publicación y verificación pública de 1.3.1 en curso. Notas: [RELEASE_1.3.1.md](RELEASE_1.3.1.md). La batería de validación ISPConfig sigue en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
+Ninguna tarea de publicación pendiente. Release estable verificado: https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.1 . Notas: [RELEASE_1.3.1.md](RELEASE_1.3.1.md). La batería de validación ISPConfig sigue en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
 ## Programadas por el software, al instalarlo en el servidor
 
