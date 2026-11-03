@@ -26,14 +26,14 @@ import subprocess
 import sys
 import time
 
-from postfix_settings import restart_postfix
+from postfix_settings import restart_postfix, MonitorError, LocalGuard, Websites, is_local, unix_identity, domain_belongs
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "1.2.2"
+VERSION = "1.3.0"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
-TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
+TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|pickup|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
 # Admite también transports con syslog_name personalizado: postfix/nombre[PID].
 CUSTOM_TAG = re.compile(r"postfix/([^ /\[]+)\[\d+\]: ([A-Za-z0-9]+): (.*)")
 SMTP_SESSION = re.compile(r"^(?:\S+|[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(postfix(?:/[^ /\[]+)?/smtpd\[\d+\]): (.*)$")
@@ -76,10 +76,6 @@ CREATE TABLE IF NOT EXISTS queue_ops (
  id TEXT PRIMARY KEY, account TEXT NOT NULL, qid TEXT NOT NULL, fingerprint TEXT NOT NULL,
  operation TEXT NOT NULL,state TEXT NOT NULL,created REAL NOT NULL,error TEXT);
 """
-
-
-class MonitorError(Exception):
-    pass
 
 
 def atomic_write(path, data, mode=0o600):
@@ -136,6 +132,8 @@ class Config:
         self.v.setdefault("backup_copies", 3)
         self.v.setdefault("status_http_host", "127.0.0.1")
         self.v.setdefault("status_http_port", 23456)
+        self.v.setdefault("monitor_local", True)
+        self.v.setdefault("block_local", True)
         if self.v.get("systemctl_bin") == "/usr/bin/systemctl" and not os.path.exists("/usr/bin/systemctl") and os.path.exists("/bin/systemctl"):
             self.v["systemctl_bin"] = "/bin/systemctl"
         integers = ("max_sent", "time_period", "max_read_bytes", "command_timeout", "stale_after",
@@ -156,7 +154,7 @@ class Config:
             raise MonitorError("status_http_host debe ser una dirección IPv4")
         if self.v["status_http_port"] > 65535:
             raise MonitorError("status_http_port debe estar entre 1 y 65535")
-        for k in ("notify", "block_smtp", "hold_queue", "reset_password"):
+        for k in ("notify", "block_smtp", "hold_queue", "reset_password", "monitor_local", "block_local"):
             if str(self.v.get(k)).lower() not in ("true", "false"):
                 raise MonitorError("Configuración: booleano true/false requerido: " + k)
             self.v[k] = str(self.v[k]).lower() == "true"
@@ -293,10 +291,11 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3):
+        if version not in (0, 1, 2, 3, 4):
             raise MonitorError("Versión de base de datos no compatible")
         self.db.executescript(SCHEMA)
-        additions = {"messages": {"sender": "TEXT", "foreign_sender": "INTEGER NOT NULL DEFAULT 0"},
+        additions = {"messages": {"sender": "TEXT", "foreign_sender": "INTEGER NOT NULL DEFAULT 0",
+                                   "local_identity": "TEXT", "local_error": "TEXT", "envelope_key": "TEXT"},
                      "incidents": {"base_maximum": "INTEGER", "reason": "TEXT NOT NULL DEFAULT 'volume'",
                                    "foreign_recipients": "INTEGER NOT NULL DEFAULT 0"}}
         for table, fields in additions.items():
@@ -314,7 +313,7 @@ class Store:
         if version < 2:
             self.db.execute("INSERT OR IGNORE INTO notice_state SELECT i.account,MAX(COALESCE(a.attempted,i.last_notice)),"
                             "MAX(i.last_notice) FROM incidents i LEFT JOIN actions a ON a.incident=i.id AND a.kind='notify' GROUP BY i.account")
-        self.db.execute("PRAGMA user_version=3")
+        self.db.execute("PRAGMA user_version=4")
         self.db.commit()
 
     def persist_critical(self):
@@ -335,6 +334,12 @@ class Store:
     def sender(self, mid, account, sender):
         a, b = mail_domain(account), mail_domain(sender)
         foreign = int(bool(a and b and a != b))
+        if is_local(account):
+            row = self.db.execute("SELECT local_identity FROM messages WHERE id=?", (mid,)).fetchone()
+            identity = json.loads(row[0]) if row and row[0] else {}
+            domains = identity.get("domains")
+            own = domain_belongs(b, domains)
+            foreign = int(bool(b and domains is not None and not own))
         self.db.execute("UPDATE messages SET sender=?,foreign_sender=? WHERE id=?", (sender, foreign, mid))
 
     def notice_due(self, account, now, interval):
@@ -431,8 +436,24 @@ class Parser:
         if when > (max(self.now, time.time()) if self.realtime else self.now) + 60:
             raise MonitorError("El log contiene fechas futuras; revise el reloj o use --now en replay")
         auth = re.search(r"(?:^|, )sasl_username=([^,\s]+)", text)
+        pickup = re.fullmatch(r"uid=(\d+) from=<(.*?)>(?: orig_id=[A-Za-z0-9]+)?", text) if service == "pickup" else None
+        if pickup and self.c["monitor_local"]:
+            account = "local:" + str(int(pickup.group(1)))
+            if account in self.c["ignore"]:
+                return
+            current = self.s.active(qid)
+            if current and current["auth_line"] == line:
+                return
+            if current:
+                self.s.db.execute("UPDATE messages SET removed=1 WHERE id=?", (current["id"],))
+            created = self.s.db.execute("INSERT INTO messages(qid,account,created,ip,auth_line) VALUES (?,?,?,?,?)",
+                                        (qid, account, when, "local", line))
+            self.s.sender(created.lastrowid, account, pickup.group(2))
+            return
         if service == "smtpd" and text.startswith("client=") and auth:
             account = auth.group(1).casefold()
+            if is_local(account):
+                raise MonitorError("Identidad SASL en el espacio reservado local:UID")
             if account in self.c["ignore"]:
                 return
             current = self.s.active(qid)
@@ -736,6 +757,8 @@ class Envelope:
                 self.queue = match.group(1)
             if line.startswith("named_attribute: sasl_username="):
                 self.account = line.split("=", 1)[1].strip().casefold()
+                if is_local(self.account):
+                    raise MonitorError("Sobre SASL en el espacio reservado local:UID")
             elif line.startswith("message_arrival_time: "):
                 value = line.split(": ", 1)[1]
                 try:
@@ -756,14 +779,61 @@ class Envelope:
     @property
     def fingerprint(self):
         if self.account is None or self.arrival is None or self.size is None or not self.queue:
-            raise MonitorError("Sobre incompleto o sin identidad SASL para " + self.qid)
+            raise MonitorError("Sobre incompleto o sin identidad verificable para " + self.qid)
         data = [self.qid, self.account, self.arrival, self.size, self.create_time]
         return hashlib.sha256(json.dumps(data).encode("utf-8")).hexdigest()
 
 
+def local_envelope_key(env):
+    return [env.arrival, env.size, env.create_time, env.sender]
+
+
+def preserve_local_queue(store, env):
+    if is_local(env.account):
+        store.set("local_queue_" + env.qid, {"account": env.account, "key": local_envelope_key(env)})
+
+
+def resolve_local_identities(store, config, commands, now, offline=False):
+    issues = []
+    if not config["monitor_local"]:
+        return issues
+    websites = Websites(config, lambda sql: mysql_query(config, commands, sql))
+    identities = {}
+    for message in store.db.execute("SELECT * FROM messages WHERE account LIKE 'local:%' AND "
+                                    "(removed=0 OR accepted>=?)", (now - config.max_period,)).fetchall():
+        account = message["account"]
+        if message["local_identity"] and not message["local_error"]:
+            continue
+        try:
+            if offline:
+                raise MonitorError("Dominios de web no consultados en replay offline: " + account)
+            if account not in identities:
+                identity = unix_identity(account.split(":", 1)[1])
+                # Los avisos root y el reencolado interno no son envíos de una web.
+                domains = None if identity["uid"] == 0 or identity["user"] == "postfix" else websites.domains(identity["user"])
+                identity["domains"] = domains
+                identities[account] = identity
+            identity = identities[account]
+            if identity["domains"] is None:
+                store.db.execute("DELETE FROM messages WHERE id=?", (message["id"],))
+                continue
+            old = store.get("local_identity_" + account)
+            if old and any(old[k] != identity[k] for k in ("uid", "user", "home")):
+                raise MonitorError("Identidad UNIX sustituida para " + account + "; requiere revisión")
+            store.set("local_identity_" + account, identity)
+            store.db.execute("UPDATE messages SET local_identity=?,local_error=NULL WHERE id=?",
+                             (json.dumps(identity), message["id"]))
+            store.sender(message["id"], account, message["sender"] or "")
+        except MonitorError as exc:
+            store.db.execute("UPDATE messages SET local_error=? WHERE id=?", (str(exc), message["id"]))
+            if message["accepted"] is not None:
+                issues.append(str(exc))
+    return list(dict.fromkeys(issues))
+
+
 class Queue:
-    def __init__(self, config, commands):
-        self.c, self.cmd = config, commands
+    def __init__(self, config, commands, store=None):
+        self.c, self.cmd, self.store = config, commands, store
 
     def listing(self):
         output = self.cmd.run("postqueue", ["-c", self.c["postfix_config"], "-j"])
@@ -778,7 +848,21 @@ class Queue:
     def envelope(self, qid):
         if not QUEUE_ID.fullmatch(qid):
             raise MonitorError("ID de cola inválido")
-        return Envelope(qid, self.cmd.run("postcat", ["-c", self.c["postfix_config"], "-eq", qid]))
+        env = Envelope(qid, self.cmd.run("postcat", ["-c", self.c["postfix_config"], "-eq", qid]))
+        if env.account is None and self.store is not None:
+            # UID solo desde pickup; jamás desde Received/From aportados por clientes.
+            message = self.store.active(qid)
+            binding = self.store.get("local_queue_" + qid)
+            if message and is_local(message["account"]):
+                binding = json.loads(message["envelope_key"]) if message["envelope_key"] else None
+                if (binding is None and env.arrival is not None and abs(env.arrival - message["created"]) <= 2
+                        and env.sender == message["sender"] and env.create_time and env.size is not None
+                        and (env.size == message["size"] or (message["size"] is None and env.queue == "hold"))):
+                    binding = {"account": message["account"], "key": local_envelope_key(env)}
+                    self.store.db.execute("UPDATE messages SET envelope_key=? WHERE id=?", (json.dumps(binding), message["id"]))
+            if binding and local_envelope_key(env) == binding["key"]:
+                env.account = binding["account"]
+        return env
 
     def action(self, option, qid, queue=None):
         if option not in ("-h", "-H", "-d", "-r") or not QUEUE_ID.fullmatch(qid):
@@ -811,6 +895,14 @@ def resolve_recipients(store, config, router, queue=None, bootstrap=False):
         if m["removed"] == 0 and queue and (m["nrcpt"] is None or m["known"] < m["nrcpt"] or m["sender"] is None):
             try:
                 env = envelope_cache.get(m["qid"]) or queue.envelope(m["qid"])
+                if is_local(m["account"]) and env.account is None:
+                    # Primera vinculación a un sobre finalizado. No usar cabeceras.
+                    if (env.arrival is not None and abs(env.arrival - m["created"]) <= 2
+                            and m["size"] is not None and env.size == m["size"]
+                            and env.sender == m["sender"] and env.create_time and not m["envelope_key"]):
+                        binding = {"account": m["account"], "key": local_envelope_key(env)}
+                        store.db.execute("UPDATE messages SET envelope_key=? WHERE id=?", (json.dumps(binding), m["id"]))
+                        env.account = m["account"]
                 if env.account != m["account"] or env.arrival is None or abs(env.arrival - m["created"]) > 2:
                     raise MonitorError("Identidad del sobre no coincide con el log: " + m["qid"])
                 if env.queue not in ("incoming", "active", "deferred", "hold"):
@@ -901,8 +993,10 @@ def evaluate(store, config, now, offline=False):
             opened.append(iid)
             if not offline:
                 for kind in ("block_smtp", "hold_queue", "reset_password", "notify"):
-                    if config[kind]:
+                    if config[kind] and (not is_local(account) or kind not in ("block_smtp", "reset_password")):
                         store.db.execute("INSERT OR IGNORE INTO actions(incident,kind) VALUES (?,?)", (iid, kind))
+                if is_local(account) and config["block_local"]:
+                    store.db.execute("INSERT OR IGNORE INTO actions(incident,kind) VALUES (?,'block_local')", (iid,))
         elif peak * incident["maximum"] > incident["peak"] * maximum:
             store.db.execute("UPDATE incidents SET peak=?,maximum=?,event_time=?,snapshot=?,base_maximum=?,reason=?,foreign_recipients=? WHERE id=?",
                              (peak, maximum, peak_time, evidence, base_maximum, reason, foreign_count, incident["id"]))
@@ -1053,6 +1147,7 @@ class Guard:
                     raise MonitorError("master.cf sobrescribe smtpd_recipient_restrictions: " + line.split("=", 1)[0])
 
     def publish(self, accounts):
+        accounts = {a for a in accounts if not is_local(a)}
         self.verify()
         self.refresh_routes(force=True)
         for account in accounts:
@@ -1069,18 +1164,72 @@ class Guard:
                 raise MonitorError("No se verifica el bloqueo SASL de " + account)
 
 
+def local_block_users(store, validate=False):
+    users = set()
+    for row in store.db.execute("SELECT account FROM blocks WHERE account LIKE 'local:%'"):
+        identity = store.get("local_identity_" + row[0])
+        if not identity:
+            raise MonitorError("Falta la identidad UNIX duradera de " + row[0])
+        if validate:
+            current = unix_identity(identity["uid"])
+            if any(current[k] != identity[k] for k in ("uid", "user", "home")):
+                raise MonitorError("Identidad UNIX sustituida: " + row[0])
+        users.add(identity["user"])
+    return users
+
+
+def publish_blocks(store, config, commands, account):
+    if is_local(account):
+        LocalGuard(config, commands, atomic_write).publish(local_block_users(store))
+    else:
+        Guard(config, commands).publish({r[0] for r in store.db.execute("SELECT account FROM blocks")})
+
+
+def repair_local_guard(store, config, commands):
+    guard = LocalGuard(config, commands, atomic_write)
+    if store.get("recovery_pause") or not guard.backup.exists():
+        return
+    known = local_block_users(store)
+    saved = guard.record()
+    if commands.pc("-h", "authorized_submit_users") != saved["installed"]:
+        raise MonitorError("authorized_submit_users cambió; se conserva el mapa local")
+    damaged = False
+    try:
+        published = guard.users()
+    except MonitorError:
+        damaged = True
+        if not guard.source.is_file() or not guard.source.read_text().startswith("# Gestionado por outbound-spam"):
+            raise MonitorError("Mapa local dañado sin fuente gestionada verificable")
+        published = {line.split()[0] for line in guard.source.read_text().splitlines() if line and not line.startswith("#")}
+    resolving = set()
+    for row in store.db.execute("SELECT key FROM meta WHERE key LIKE 'resolution_local:%'"):
+        state = store.get(row[0], {})
+        if state.get("phase") in ("releasing", "unblocking"):
+            identity = store.get("local_identity_" + state["account"], {})
+            if identity.get("user"):
+                resolving.add(identity["user"])
+    if published - known - resolving:
+        store.set("recovery_pause", "Postfix conserva bloqueos locales sin historial privado; automatismos suspendidos")
+        store.persist_critical()
+        return
+    if published != known or damaged:
+        guard.publish(known, verify=False)
+
+
 class Actions:
     def __init__(self, store, config, commands, now):
         self.s, self.c, self.cmd, self.now = store, config, commands, now
-        self.queue, self.guard = Queue(config, commands), Guard(config, commands)
+        self.queue, self.guard = Queue(config, commands, store), Guard(config, commands)
 
     def block(self, incident):
-        accounts = {r[0] for r in self.s.db.execute("SELECT account FROM blocks")}
-        accounts.add(incident["account"])
+        if is_local(incident["account"]):
+            identity = self.s.get("local_identity_" + incident["account"])
+            if not identity or any(unix_identity(identity["uid"])[k] != identity[k] for k in ("uid", "user", "home")):
+                raise MonitorError("Identidad UNIX ausente o sustituida: " + incident["account"])
         # Intención duradera: si se interrumpe la publicación, el siguiente run la reintenta.
         self.s.db.execute("INSERT OR REPLACE INTO blocks VALUES (?,?)", (incident["account"], incident["id"]))
         self.s.persist_critical()
-        self.guard.publish(accounts)
+        publish_blocks(self.s, self.c, self.cmd, incident["account"])
 
     def hold(self, incident):
         entries = self.queue.listing()
@@ -1103,7 +1252,8 @@ class Actions:
             if existing and item["queue_name"] == "hold":
                 continue
             self.s.db.execute("INSERT OR IGNORE INTO held VALUES (?,?,?,?,?)",
-                              (qid, incident["account"], fingerprint, incident["id"], self.now))
+                               (qid, incident["account"], fingerprint, incident["id"], self.now))
+            preserve_local_queue(self.s, env)
             self.s.persist_critical()
             if item["queue_name"] != "hold":
                 self.queue.action("-h", qid)
@@ -1162,7 +1312,8 @@ class Actions:
     def report(self, incident):
         actions = self.s.db.execute("SELECT kind,state,error FROM actions WHERE incident=?", (incident["id"],)).fetchall()
         lines = ["Incidente de abuso SMTP saliente #%d" % incident["id"],
-                 "Servidor: " + os.uname().nodename, "Cuenta SASL: " + incident["account"],
+                 "Servidor: " + os.uname().nodename,
+                 ("Identidad local: " if is_local(incident["account"]) else "Cuenta SASL: ") + incident["account"],
                  "Destinatarios externos en la ventana: %d (limite %d / %d segundos)" % (incident["peak"], incident["maximum"], incident["period"]),
                  "Fin de ventana (hora local): " + runtime.human_timestamp(incident["event_time"]),
                  "Se cuentan destinatarios aceptados, incluidos pendientes; no reintentos.",
@@ -1170,11 +1321,15 @@ class Actions:
                  (incident["base_maximum"] or incident["maximum"], incident["reason"], incident["foreign_recipients"]),
                  "Informe exclusivo de esta cuenta; separacion minima entre intentos: 6 horas.", "", "Acciones:"]
         lines.extend("- %s: %s%s" % (a["kind"], a["state"], " — " + a["error"] if a["error"] else "") for a in actions)
+        if is_local(incident["account"]):
+            lines += ["Web/UID: " + json.dumps(self.s.get("local_identity_" + incident["account"], {}), ensure_ascii=False),
+                      "El bloqueo local impide sendmail/postdrop a cualquier destino, también local."]
         held = self.s.db.execute("SELECT COUNT(*) FROM held WHERE account=?", (incident["account"],)).fetchone()[0]
         lines += ["Mensajes registrados como retenidos: %d" % held, "", "Muestras de mensajes:"]
         for m in json.loads(incident["snapshot"]):
             lines += ["", "ID %s | IP %s | Message-ID %s" % (m["qid"], m["ip"], m["message_id"]),
-                      "Remitente SMTP: %s; dominio de autenticacion: %s" % (m.get("sender"), mail_domain(incident["account"])),
+                      "Remitente del sobre: %s; referencia de dominio: %s" %
+                      (m.get("sender"), json.loads(m["local_identity"])["domains"] if m.get("local_identity") else mail_domain(incident["account"])),
                       "Asunto (si fue registrado): " + (m["subject"] or "no disponible"), m["auth_line"]]
             if m["queue_line"]:
                 lines.append(m["queue_line"])
@@ -1214,7 +1369,7 @@ class Actions:
     def process(self):
         if self.s.get("recovery_pause"):
             return
-        if self.c["block_smtp"] and self.s.db.execute("SELECT 1 FROM blocks LIMIT 1").fetchone():
+        if self.c["block_smtp"] and self.s.db.execute("SELECT 1 FROM blocks WHERE account NOT LIKE 'local:%' LIMIT 1").fetchone():
             try:
                 self.guard.verify()
                 self.guard.refresh_routes()
@@ -1236,7 +1391,7 @@ class Actions:
         self.s.persist_critical()
         pending = self.s.db.execute("SELECT a.* FROM actions a JOIN incidents i ON i.id=a.incident "
                                     "WHERE a.state!='done' AND i.acked IS NULL ORDER BY "
-                                    "CASE a.kind WHEN 'block_smtp' THEN 0 WHEN 'hold_queue' THEN 1 WHEN 'reset_password' THEN 2 ELSE 3 END,a.id").fetchall()
+                                    "CASE a.kind WHEN 'block_smtp' THEN 0 WHEN 'block_local' THEN 0 WHEN 'hold_queue' THEN 1 WHEN 'reset_password' THEN 2 ELSE 3 END,a.id").fetchall()
         for a in pending:
             if not self.c[a["kind"]]:
                 continue
@@ -1251,7 +1406,7 @@ class Actions:
                 held_before = self.s.db.execute("SELECT COUNT(*) FROM held WHERE incident=?", (incident["id"],)).fetchone()[0]
                 self.s.db.execute("UPDATE actions SET attempts=attempts+1,attempted=? WHERE id=?", (self.now, a["id"]))
                 self.s.persist_critical()
-                if a["kind"] == "block_smtp":
+                if a["kind"] in ("block_smtp", "block_local"):
                     self.block(incident)
                 elif a["kind"] == "hold_queue":
                     self.hold(incident)
@@ -1289,6 +1444,7 @@ def coverage_issues(store, config, now):
     issues = []
     if store.get("recovery_pause"):
         issues.append(store.get("recovery_pause"))
+    issues.extend(r[0] for r in store.db.execute("SELECT DISTINCT local_error FROM messages WHERE local_error IS NOT NULL AND accepted>=?", (now - config.max_period,)))
     for m in store.db.execute("SELECT m.qid,m.nrcpt,COUNT(r.address) AS known,SUM(CASE WHEN r.external IS NULL THEN 1 ELSE 0 END) AS unknown "
                               "FROM messages m LEFT JOIN recipients r ON r.mid=m.id WHERE m.accepted>=? "
                               "GROUP BY m.id HAVING (m.nrcpt IS NOT NULL AND COUNT(r.address)<m.nrcpt) OR "
@@ -1426,7 +1582,7 @@ def install_guard(config, commands, store):
 
 
 def uninstall_guard(config, commands, store):
-    if store.db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
+    if store.db.execute("SELECT COUNT(*) FROM blocks WHERE account NOT LIKE 'local:%'").fetchone()[0]:
         raise MonitorError("Desbloquee las cuentas antes de retirar la integración")
     backup = Path(config["state_dir"]) / "postfix-guard-backup.json"
     saved = json.loads(backup.read_text(encoding="utf-8"))
@@ -1561,7 +1717,7 @@ def repair_guard(store, config, commands, recovery):
             checked = True
         with contextlib.closing(sqlite3.connect(guard.database.absolute().as_uri() + "?mode=ro", uri=True)) as db:
             published = {r[0] for r in db.execute("SELECT account FROM blocked")}
-        known = {r[0] for r in store.db.execute("SELECT account FROM blocks")}
+        known = {r[0] for r in store.db.execute("SELECT account FROM blocks") if not is_local(r[0])}
         resolving = {row[0][len("resolution_"):] for row in store.db.execute("SELECT key FROM meta WHERE key LIKE 'resolution_%'")
                      if store.get(row[0], {}).get("phase") in ("releasing", "unblocking")}
         if published - known - resolving:
@@ -1578,7 +1734,7 @@ def repair_guard(store, config, commands, recovery):
         candidate = Guard(temp_config, commands)
         try:
             candidate.initialize()
-            accounts = {r[0] for r in store.db.execute("SELECT account FROM blocks")}
+            accounts = {r[0] for r in store.db.execute("SELECT account FROM blocks") if not is_local(r[0])}
             with contextlib.closing(sqlite3.connect(str(candidate.database))) as db:
                 with db:
                     db.executemany("INSERT INTO blocked VALUES (?,?)", [(account, guard.CLASS) for account in accounts])
@@ -1621,7 +1777,7 @@ def admin_incident(store, config, account, now):
 
 
 def finish_queue_op(store, config, commands, item):
-    queue = Queue(config, commands)
+    queue = Queue(config, commands, store)
     entries = queue.listing()
     if item["qid"] not in entries:
         store.db.execute("DELETE FROM held WHERE qid=? AND fingerprint=?", (item["qid"], item["fingerprint"]))
@@ -1659,6 +1815,7 @@ def finish_queue_op(store, config, commands, item):
 
 
 def queue_operation(store, config, commands, account, env, operation, now):
+    preserve_local_queue(store, env)
     existing = store.db.execute("SELECT * FROM queue_ops WHERE account=? AND qid=? AND fingerprint=? AND operation=? AND state IN ('pending','failed') ORDER BY created LIMIT 1",
                                 (account, env.qid, env.fingerprint, operation)).fetchone()
     if existing is None:
@@ -1689,7 +1846,7 @@ def reconcile_queue_ops(store, config, commands):
         if state and state.get("phase") == "releasing":
             finalize_resolution(store, config, commands, state["account"], time.time())
         elif state and state.get("phase") == "unblocking":
-            Guard(config, commands).publish({r[0] for r in store.db.execute("SELECT account FROM blocks")})
+            publish_blocks(store, config, commands, state["account"])
             store.set(key, {"account": state["account"], "phase": "done"})
             store.persist_critical()
 
@@ -1705,7 +1862,7 @@ def finalize_resolution(store, config, commands, account, now):
     store.db.execute("DELETE FROM blocks WHERE account=?", (account,))
     store.persist_critical()
     if state.get("had_block"):
-        Guard(config, commands).publish({r[0] for r in store.db.execute("SELECT account FROM blocks")})
+        publish_blocks(store, config, commands, account)
     store.db.execute("INSERT OR REPLACE INTO acknowledgements VALUES (?,?)", (account, now))
     store.set("resolution_" + account, {"account": account, "phase": "done", "at": now})
     store.persist_critical()
@@ -1713,16 +1870,24 @@ def finalize_resolution(store, config, commands, account, now):
 
 
 def manage(store, config, commands, args, now):
-    queue = Queue(config, commands)
+    queue = Queue(config, commands, store)
     account = (args.list_held or args.release_held or args.delete_held or args.unblock or args.ack or
                getattr(args, "purge_user_queue", None) or getattr(args, "resolve_user", None) or getattr(args, "block_user", None))
     account = account.casefold()
+    if is_local(account):
+        account = "local:" + str(int(account.split(":", 1)[1]))
     if store.get("recovery_pause") and any((getattr(args, "resolve_user", None), getattr(args, "block_user", None), args.unblock)):
         raise MonitorError("Historial crítico incompleto: conserve las restricciones y restaure una copia verificada antes de resolver/bloquear/desbloquear")
     if getattr(args, "block_user", None):
+        if is_local(account) and not store.get("local_identity_" + account):
+            identity = unix_identity(account.split(":", 1)[1])
+            identity["domains"] = Websites(config, lambda sql: mysql_query(config, commands, sql)).domains(identity["user"])
+            if identity["domains"] is None:
+                raise MonitorError("El usuario UNIX no corresponde a una web de esta instancia ISPConfig")
+            store.set("local_identity_" + account, identity)
         incident = admin_incident(store, config, account, now)
         Actions(store, config, commands, now).block(incident)
-        return "Bloqueo remoto publicado para " + account
+        return ("Inyección sendmail/postdrop suspendida para " if is_local(account) else "Bloqueo remoto publicado para ") + account
     if getattr(args, "purge_user_queue", None):
         errors, count, skipped = [], 0, 0
         router = Router(config, commands)
@@ -1783,10 +1948,10 @@ def manage(store, config, commands, args, now):
         store.set("resolution_" + account, {"account": account, "phase": "unblocking"})
         store.db.execute("DELETE FROM blocks WHERE account=?", (account,))
         # Impedir que un bloqueo pendiente se vuelva a ejecutar tras una orden manual.
-        store.db.execute("UPDATE actions SET state='done',error=NULL WHERE kind='block_smtp' AND incident IN "
+        store.db.execute("UPDATE actions SET state='done',error=NULL WHERE kind IN ('block_smtp','block_local') AND incident IN "
                          "(SELECT id FROM incidents WHERE account=? AND acked IS NULL)", (account,))
         store.persist_critical()
-        Guard(config, commands).publish({r[0] for r in store.db.execute("SELECT account FROM blocks")})
+        publish_blocks(store, config, commands, account)
         store.set("resolution_" + account, {"account": account, "phase": "done"})
         store.persist_critical()
         return "Cuenta desbloqueada; se conserva la retención y el incidente"
@@ -1843,7 +2008,7 @@ def cli():
       Ignora la cuenta y elimina su límite particular; repetirlo no crea duplicados.
     outbound-spam.sh --set-custom-limit boletin@ejemplo.com 500 3600
       Vuelve a supervisarla con 500 destinatarios externos por hora.
-  Requieren una dirección válida y enteros positivos; conservan las demás cuentas.
+  Requieren una dirección válida o local:UID y enteros positivos; conservan las demás cuentas.
   Se aplican en la siguiente pasada, sin reiniciar. No desbloquean ni liberan HOLD.
 
   Decidir por separado el destino de mensajes retenidos:
@@ -1857,13 +2022,20 @@ def cli():
     outbound-spam.sh --install-monit
     outbound-spam.sh --upgrade
 
+  Webs PHP/sendmail, identificadas automáticamente por UID e ISPConfig:
+    outbound-spam.sh --inspect-local-user web6 --sender ventas@ejemplo.com
+    outbound-spam.sh --set-custom-limit local:5009 300 3600
+    outbound-spam.sh --resolve-user local:5009
+  La cuota cuenta externos. Su bloqueo impide toda inyección sendmail/postdrop,
+  también a buzones locales; SMTP sin AUTH a localhost requiere otro control.
+
   Los avisos de correo tienen mínimo 6 horas por cuenta. Detección y contención
   siguen en cada pasada. El calentamiento es informativo y no hace fallar Monit.
   Fechas de presentación: hora local del servidor. Estado e inventario: no borrar.
 """
     launcher = Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent)) / "outbound-spam.sh"
     guide = guide.replace("outbound-spam.sh --", str(launcher) + " --")
-    p = argparse.ArgumentParser(prog="outbound-spam.sh", description="Control de spam saliente de cuentas SMTP autenticadas: log incremental y cola Postfix.",
+    p = argparse.ArgumentParser(prog="outbound-spam.sh", description="Control de spam saliente SMTP AUTH y webs PHP/sendmail: log incremental y cola Postfix.",
                                 formatter_class=argparse.RawDescriptionHelpFormatter, epilog=guide)
     p.add_argument("--version", action="version", version=VERSION)
     p.add_argument("--config-fd", type=int, help=argparse.SUPPRESS)
@@ -1879,6 +2051,7 @@ def cli():
     p.add_argument("--postfix-client-limit", type=int, help="Límite de recepción por IP; 0 preserva local/NAT")
     p.add_argument("--destination-delay", help="Retraso por destino, simultáneo al freno por transporte")
     p.add_argument("--lock-wait", type=float, help="Segundos para esperar una operación activa")
+    p.add_argument("--sender", help="Remitente del sobre a comprobar; solo con --inspect-local-user")
     p.add_argument("--upgrade-lock-fd", type=int, help=argparse.SUPPRESS)
     choices = p.add_mutually_exclusive_group()
     choices.add_argument("--yes", action="store_true", help="Aceptar creación del bloque Postfix sin pregunta")
@@ -1898,6 +2071,9 @@ def cli():
     mode.add_argument("--replay", metavar="LOG", help="Análisis offline aislado, sin órdenes Postfix/SQL ni notificaciones")
     mode.add_argument("--status", action="store_true", help="Mostrar estado y fechas locales: código 0 sano/calentamiento, 1 alerta, 2 error")
     mode.add_argument("--doctor", action="store_true", help="Comprobar dependencias y configuración, sin acciones de contención")
+    mode.add_argument("--inspect-local-user", metavar="UID_O_USUARIO", help="Consultar identidad UNIX y dominios ISPConfig de una web, sin enviar ni bloquear")
+    mode.add_argument("--install-local-guard", action="store_true", help="Instalar ACL hash de sendmail/postdrop y recargar Postfix")
+    mode.add_argument("--uninstall-local-guard", action="store_true", help="Restaurar authorized_submit_users; requiere webs desbloqueadas")
     mode.add_argument("--install-monit", action="store_true", help="Instalar Spam_Status, validar y reiniciar Monit")
     mode.add_argument("--uninstall-monit", action="store_true", help="Retirar solo el monitor Spam_Status y su comprobador")
     mode.add_argument("--install-postfix-guard", action="store_true", help="Instalar/migrar el bloqueo por SASL/destinatario; validar y reiniciar Postfix")
@@ -1915,7 +2091,9 @@ def cli():
     for option, explanation in operations.items():
         mode.add_argument("--" + option, metavar="CUENTA", help=explanation)
     args = p.parse_args()
-    selected = any(getattr(args, k) for k in ("run", "daemon", "upgrade", "prepare_upgrade", "install_service", "uninstall_service", "replay", "status", "doctor", "install_monit", "uninstall_monit", "install_postfix_guard",
+    if args.sender is not None and not args.inspect_local_user:
+        p.error("--sender requiere --inspect-local-user")
+    selected = any(getattr(args, k) for k in ("inspect_local_user", "install_local_guard", "uninstall_local_guard", "run", "daemon", "upgrade", "prepare_upgrade", "install_service", "uninstall_service", "replay", "status", "doctor", "install_monit", "uninstall_monit", "install_postfix_guard",
                    "uninstall_postfix_guard", "list_held", "release_held", "delete_held", "unblock", "ack", "set_limits", "configure_postfix", "purge_user_queue", "resolve_user", "block_user", "set_custom_limit", "set_ignore"))
     if not selected:
         if args.max_sent is not None or args.time_period is not None:
@@ -1961,7 +2139,7 @@ def _main(parser, args):
     args.config_path = str(Path(args.config_path).absolute())
     if config_warning and not args.replay:
         runtime.audit("configuracion_advertencia", detalle=config_warning)
-    if config_warning and any((args.set_limits, args.configure_postfix, args.install_service, args.install_monit, args.install_postfix_guard, args.set_custom_limit, args.set_ignore)):
+    if config_warning and any((args.set_limits, args.configure_postfix, args.install_service, args.install_monit, args.install_postfix_guard, args.install_local_guard, args.set_custom_limit, args.set_ignore)):
         raise MonitorError(config_warning + "; corrija el archivo antes de modificar la instalación")
     for option, key in ((args.max_sent, "max_sent"), (args.time_period, "time_period")):
         if option is not None:
@@ -2000,11 +2178,32 @@ def _main(parser, args):
         config.v["state_dir"] = str(Path(args.state_dir).resolve())
     now = args.now if args.now is not None else time.time()
     commands = Commands(config)
+    if args.inspect_local_user:
+        import pwd
+        require_root()
+        try:
+            uid = int(args.inspect_local_user) if args.inspect_local_user.isdigit() else pwd.getpwnam(args.inspect_local_user).pw_uid
+        except KeyError:
+            raise MonitorError("Usuario UNIX no encontrado")
+        identity = unix_identity(uid)
+        identity["domains"] = Websites(config, lambda sql: mysql_query(config, commands, sql)).domains(identity["user"])
+        identity["account"] = "local:" + str(uid)
+        identity["server_id"] = config["ispconfig_server_id"]
+        if args.sender is not None:
+            if args.sender:
+                config.check_mailbox(args.sender)
+            identity["sender"] = args.sender
+            domain = mail_domain(args.sender)
+            identity["foreign"] = None if identity["domains"] is None else bool(domain and not domain_belongs(domain, identity["domains"]))
+        print(json.dumps(identity, ensure_ascii=False, indent=2))
+        return 0
     if args.doctor:
         dependencies = ["postconf", "postmap", "postcat", "postqueue", "postsuper", "postfix"]
         dependencies += ["sendmail"] if config["notify"] and config["alert_transport"] == "sendmail" else []
         dependencies += ["mysql", "openssl", "doveadm"] if config["reset_password"] else []
         if config["block_smtp"] and config["routing_mode"] == "auto" and not config["local_domains"]:
+            dependencies.append("mysql")
+        if config["monitor_local"]:
             dependencies.append("mysql")
         for name in dependencies:
             if not os.access(config[name + "_bin"], os.X_OK):
@@ -2014,6 +2213,10 @@ def _main(parser, args):
         Router(config, commands).load()
         if config["block_smtp"]:
             Guard(config, commands).verify()
+        if config["monitor_local"]:
+            Websites(config, lambda sql: mysql_query(config, commands, sql)).load()
+            if config["block_local"]:
+                LocalGuard(config, commands, atomic_write).verify()
         print("Configuración válida; Python %s; SQLite %s; Postfix %s" % (sys.version.split()[0], sqlite3.sqlite_version, commands.pc("-h", "mail_version")))
         return 0
     if not args.replay:
@@ -2105,12 +2308,21 @@ def _main(parser, args):
                 if config_warning:
                     raise MonitorError(config_warning + "; corrija la configuración antes de actualizar")
                 runtime.migrate_http_config(args.config_path, code_base, parse_profile, atomic_write)
+                if config["monitor_local"] and config["block_local"]:
+                    LocalGuard(config, commands, atomic_write).install(local_block_users(store, validate=True))
+                    store.set("local_guard_installed", True)
+                    store.persist_critical()
+                if config["monitor_local"] and not store.get("local_monitor_started"):
+                    store.set("local_monitor_started", time.time())
+                    store.set("warm_until", max(store.get("warm_until", 0), time.time() + config.max_period))
+                    store.persist_critical()
                 from distribution import legacy_prepare
                 legacy_prepare(code_base, args.config_path)
                 print(json.dumps({"version": VERSION, "schema_version": store.db.execute("PRAGMA user_version").fetchone()[0], "prepared": True}))
                 return 0
             if recovery is not None:
                 repair_guard(store, config, commands, recovery)
+                repair_local_guard(store, config, commands)
             if args.set_limits or args.configure_postfix:
                 from postfix_settings import configure
                 result = configure(config, commands, args.config_path, atomic_write,
@@ -2118,6 +2330,22 @@ def _main(parser, args):
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             elif args.install_postfix_guard:
                 print(install_guard(config, commands, store))
+                if config["monitor_local"]:
+                    LocalGuard(config, commands, atomic_write).install(local_block_users(store, validate=True))
+                    store.set("local_guard_installed", True)
+                    store.persist_critical()
+            elif args.install_local_guard:
+                changed = LocalGuard(config, commands, atomic_write).install(local_block_users(store, validate=True))
+                store.set("local_guard_installed", True)
+                store.persist_critical()
+                print("ACL local instalada; Postfix recargado" if changed else "ACL local ya instalada")
+            elif args.uninstall_local_guard:
+                if local_block_users(store):
+                    raise MonitorError("Desbloquee las webs antes de retirar la ACL local")
+                LocalGuard(config, commands, atomic_write).uninstall()
+                store.set("local_guard_installed", False)
+                store.persist_critical()
+                print("ACL local retirada; Postfix recargado")
             elif args.uninstall_postfix_guard:
                 print(uninstall_guard(config, commands, store))
             elif not (args.run or args.replay):
@@ -2143,11 +2371,17 @@ def _main(parser, args):
                             if oldest > now - config.max_period:
                                 store.set("warm_until", oldest + config.max_period)
                         router = Router(config, commands)
-                        queue = None if args.replay else Queue(config, commands)
-                        issues = resolve_recipients(store, config, router, queue, bootstrap=first and not args.replay)
+                        issues = resolve_local_identities(store, config, commands, now, offline=bool(args.replay))
+                        queue = None if args.replay else Queue(config, commands, store)
+                        issues.extend(resolve_recipients(store, config, router, queue, bootstrap=first and not args.replay))
                         issues.extend(reader.notes)
                         if config_warning:
                             issues.append(config_warning)
+                        if not args.replay and config["monitor_local"] and config["block_local"]:
+                            try:
+                                LocalGuard(config, commands, atomic_write).verify()
+                            except MonitorError as exc:
+                                issues.append(str(exc))
                         if recovery and recovery.note:
                             issues.append(recovery.note)
                         if not args.replay:
@@ -2181,7 +2415,7 @@ def _main(parser, args):
                                       nuevos_incidentes=opened, bytes_leidos=reader.bytes,
                                       duracion=summary["metrics"]["duration_seconds"])
                         for incident in summary["incidents"]:
-                            details = dict(incident, ajustes={key: config[key] for key in ("block_smtp", "hold_queue", "reset_password", "notify")})
+                            details = dict(incident, ajustes={key: config[key] for key in ("block_smtp", "block_local", "hold_queue", "reset_password", "notify")})
                             key = "audit_incident_" + str(incident["id"])
                             if store.get(key) != details:
                                 runtime.audit("incidencia", **details)
@@ -2241,7 +2475,7 @@ def main():
     operation = next(("--" + key.replace("_", "-") for key, value in vars(args).items()
                       if value and key in ("run", "daemon", "upgrade", "status", "doctor", "prepare_upgrade",
                       "set_limits", "configure_postfix", "install_service", "uninstall_service", "install_monit",
-                      "uninstall_monit", "install_postfix_guard",
+                       "uninstall_monit", "install_postfix_guard", "inspect_local_user", "install_local_guard", "uninstall_local_guard",
                       "uninstall_postfix_guard", "list_held", "release_held", "delete_held", "unblock", "ack",
                       "purge_user_queue", "resolve_user", "block_user", "set_custom_limit", "set_ignore")), "consulta")
     target = next((getattr(args, key) for key in ("list_held", "release_held", "delete_held", "unblock", "ack",

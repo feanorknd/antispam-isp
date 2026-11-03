@@ -1,5 +1,15 @@
 # Cambios efectuados
 
+## 1.3.0 — 2026-11-03
+
+- Atribución de correo local desde pickup por UID, independiente de los PID de PHP-FPM, con identidades `local:UID` y cuotas de destinatarios externos.
+- Descubrimiento automático de dominios web, alias/subdominios y auto-subdominios ISPConfig para foreign; pools con usuarios distintos quedan separados.
+- ACL hash negada en `authorized_submit_users`, instalada automáticamente durante upgrade con validación/reload. Publicación atómica de bloqueos/desbloqueos sin reload por incidente y preservando la política previa.
+- Acciones locales diferenciadas, sin reset de contraseña; límites/excepciones, avisos, HOLD y resolución compatibles con identidades locales.
+- Esquema 4 y recuperación duradera de identidad UNIX y vinculaciones de cola; detección de UID/IDs sustituidos y conservación de bloqueos sin historial.
+- Inspector `--inspect-local-user UID_O_USUARIO [--sender REMITENTE]`, instaladores de ACL y batería de comprobaciones reales documentada.
+- 213 pruebas completas y 9 HTTP correctas en Focal y Noble; 25 pruebas locales adicionales en Jammy/Postfix 3.6.4, incluida inyección real con sendmail/postdrop y upgrade desde 1.2.2.
+
 ## 1.2.2 — 2026-11-01
 
 - Estado JSON completo servido por el propio demonio en HTTP, con host y puerto configurables y métricas numéricas para NodePing.

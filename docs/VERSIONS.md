@@ -4,15 +4,25 @@
 
 | Elemento | Versión |
 |---|---|
-| Aplicación | 1.2.2 |
-| Esquema SQLite privado (`user_version`) | 3 |
+| Aplicación | 1.3.0 |
+| Esquema SQLite privado (`user_version`) | 4 |
 | Python mínimo | 3.8 |
 | Bash utilizado | 5.0 o posterior en las distribuciones verificadas |
 | Postfix requerido | 3.1+ para `postqueue -j`; integración con `postfix-sqlite` |
 
 `VERSION` y `--version` deben coincidir; las pruebas lo comprueban. Las futuras modificaciones incompatibles del esquema deberán introducir una migración y actualizar este documento.
 
-## Matriz de la distribución 1.2.2
+## Matriz de la distribución 1.3.0
+
+| Imagen | Python | Postfix | Resultado |
+|---|---:|---:|---|
+| Ubuntu Focal 20.04 | 3.8.10 | 3.4.13 | 213 pruebas completas + 9 HTTP correctas |
+| Ubuntu Noble 24.04 | 3.12.3 | 3.8.6 | 213 pruebas completas + 9 HTTP correctas |
+| Ubuntu Jammy 22.04 | 3.10.12 | 3.6.4 | 25 pruebas de protección local correctas |
+
+1.3.0 migra automáticamente los esquemas anteriores a 4 y conserva `upgrade_api=1` y `service_unit_api=1`. Usa los mismos nombres de componentes admitidos por los actualizadores públicos anteriores. El upgrade instala y recarga la ACL local por defecto, conservando la política previa. Se ha probado el actualizador público 1.2.2 con Postfix real y las migraciones históricas anteriores. La asociación a dominios ISPConfig utiliza filas simuladas; el binario Postfix, sendmail/postdrop, las colas, el mapa hash y la recarga son reales. Para validar la base de producción: [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
+
+## Matriz histórica de la distribución 1.2.2
 
 | Imagen | Python | Resultado |
 |---|---:|---|

@@ -3,7 +3,7 @@
 ## Flujo
 
 ```text
-mail.log incremental ──→ cuenta SASL + generación de ID de cola
+mail.log incremental ──→ cuenta SASL o pickup UID + generación de ID de cola
                                     │
                   líneas de entrega + sobre pendiente
                                     │
@@ -20,7 +20,9 @@ mail.log incremental ──→ cuenta SASL + generación de ID de cola
 
 ## Identidad y unidad de cómputo
 
-Solo una línea SMTP `ID: client=..., sasl_username=...` con un ID de cola válido crea una atribución desde el log. Los errores de autenticación no tienen ese significado y se ignoran. En el bootstrap se utiliza el atributo SASL almacenado por Postfix en el sobre, no una cabecera aportada por el cliente.
+Para SMTP, una línea `ID: client=..., sasl_username=...` con un ID válido crea la atribución. Los errores de autenticación se ignoran. El bootstrap SMTP utiliza el atributo SASL del sobre, no una cabecera aportada por el cliente. Desde 1.3.0, `pickup ID: uid=N from=<...>` crea una identidad `local:N`, resuelta a usuario/home UNIX y dominios web de ISPConfig. El espacio `local:UID` está reservado: no se acepta como identidad SASL.
+
+La comparación foreign local utiliza los dominios de la web, alias y subdominios asociados en `web_domain`, no todos los dominios de correo del servidor. La clasificación de los destinatarios sigue utilizando las rutas de Postfix. Detalles de las asociaciones y exclusiones en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
 La primera línea `qmgr` con `nrcpt` confirma la aceptación y fija el instante de la ventana. Para un mensaje HOLD, que no pasa por `qmgr`, se puede completar la aceptación desde el fichero de cola finalizado. Los rechazos de cleanup/milter cierran transacciones no aceptadas.
 
@@ -80,7 +82,7 @@ La base privada usa SQLite WAL, claves foráneas, transacciones y `synchronous=F
 | Tabla | Datos |
 |---|---|
 | `meta` | Cursores, calentamiento, modo de ejecución, supresiones y metadatos |
-| `messages` | Generaciones, identidad SASL, aceptación y muestras |
+| `messages` | Generaciones, identidad SASL/local, aceptación, asociación web, vinculación de sobre y muestras |
 | `recipients` | Destinatarios efectivos, clasificación y último estado observado |
 | `incidents` | Umbrales, picos, evidencias y reconocimiento |
 | `actions` | Intenciones duraderas, intentos, resultado y payload privado |
@@ -108,5 +110,7 @@ Las rutas se obtienen de los dominios/buzones/reenvíos/transportes de ISPConfig
 HOLD es una acción sobre el mensaje completo. El monitor espera a que terminen sus destinatarios locales y retiene únicamente cuando el sobre pendiente ya es exclusivamente externo. Esa espera puede permitir que una entrega externa se complete antes de la retención; el plan A no ofrece retención atómica por destinatario.
 
 No se aplica una cuota en tiempo real. La secuencia es detección periódica → publicación del bloqueo → retención de cola configurada. Los mensajes aceptados o entregados antes de esa publicación siguen sujetos a la carrera propia del plan A.
+
+Las webs usan una ACL distinta: un mapa hash negado en `authorized_submit_users`, que comprueban sendmail/postdrop en cada nueva ejecución. Se reconstruye fuera de servicio y se publica por sustitución atómica sin reload por incidente. Una vez activado por exceso externo, el bloqueo local impide inyecciones a cualquier destinatario. La instalación inicial/upgrade sí valida y recarga Postfix. Los metadatos críticos conservan la identidad UNIX y la generación de los sobres locales sobre los que se autorizan operaciones.
 
 El perfil combina `default_destination_rate_delay=10s` y sus valores por transporte externo con `smtp_transport_rate_delay` (4s en el perfil 100/h). Local, LMTP y filtros locales reconocidos quedan a cero. El límite por cuenta del analizador suma destinatarios de todos sus transportes externos; los frenos nativos tienen bolsas por destino/transporte y cuentan entregas, no destinatarios. Las decisiones de relay global, por remitente o por `transport_maps` siguen perteneciendo a Postfix/ISPConfig. Detalles en [POSTFIX.md](POSTFIX.md).

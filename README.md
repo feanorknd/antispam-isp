@@ -1,8 +1,10 @@
 # Outbound Spam Monitor
 
-Control de abuso SMTP **saliente y autenticado**, con detección incremental, servicio systemd, informes, Monit y contención por cuenta. Versión **1.2.2**.
+Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión **1.3.0**.
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
+
+Para webs, atribuye `pickup uid=...` al usuario UNIX y obtiene automáticamente sus dominios de ISPConfig, incluidos alias/subdominios asociados. El bloqueo local usa un mapa hash de `authorized_submit_users`: no necesita reload por incidente y nunca cambia contraseñas de buzones por un envío PHP. Véase [protección PHP/sendmail y comprobaciones reales](docs/LOCAL_SUBMISSION.md).
 
 ## Archivos principales
 
@@ -23,11 +25,12 @@ VERSION                       Versión de la distribución
 
 ## Instalación y actualización
 
-Descargar `outbound-spam-1.2.2.tar.gz` y `SHA256SUMS` del [release 1.2.2](https://github.com/feanorknd/antispam-isp/releases/tag/v1.2.2), comprobar el checksum, extraer y ejecutar:
+Descargar `outbound-spam-1.3.0.tar.gz` y `SHA256SUMS` del [release 1.3.0](https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.0), comprobar el checksum, extraer y ejecutar:
 
 ```bash
 sudo ./install.sh --install-deps
 sudo nano /root/scripts/outbound-spam.conf
+sudo /root/scripts/outbound-spam.sh --install-local-guard
 sudo /root/scripts/outbound-spam.sh --doctor
 ```
 
@@ -38,6 +41,8 @@ sudo /root/scripts/outbound-spam.sh --upgrade
 ```
 
 El instalador conserva el archivo operativo y el estado. En `/root/scripts/` instala únicamente los dos scripts, la configuración privada y su ejemplo. Código, versiones, respaldos y última configuración válida se reúnen en `/var/lib/outbound-spam/`, con activación atómica mediante `current`. El upgrade migra automáticamente la distribución anterior y reanuda el servicio si estaba activo. Véase [instalación y upgrade](docs/UPGRADE.md).
+
+Al actualizar a 1.3.0 se instala automáticamente la ACL de inyección local y se ejecuta `postfix check` y `reload`, conservando la política anterior de `authorized_submit_users`. `monitor_local=true` y `block_local=true` son los nuevos valores por defecto; no requieren añadir asignaciones al archivo privado. Solo los externos disparan el bloqueo, pero una web bloqueada pierde toda inyección con sendmail/postdrop, también para destinatarios locales.
 
 En el upgrade a 1.2.2 se añaden al final de la configuración las variables HTTP que falten, conservando los valores existentes. Otras variables nuevas se notifican para revisión. 1.0.1 corrige la configuración de retrasos en servidores cuyo `master.cf` contiene `discard` y otros agentes específicos de ISPConfig.
 
@@ -61,6 +66,7 @@ El límite particular sustituye al anterior y retira la cuenta de ignorados; mar
 Empezar por [docs/README.md](docs/README.md) y [la instalación](docs/INSTALLATION.md).
 
 - [Configuración](docs/CONFIGURATION.md)
+- [Webs PHP/sendmail: funcionamiento y batería de comprobaciones](docs/LOCAL_SUBMISSION.md)
 - [Operación y resolución de incidentes](docs/OPERATIONS.md)
 - [Logs operativos y rotación](docs/LOGGING.md)
 - [Diseño y límites del recuento](docs/ARCHITECTURE.md)

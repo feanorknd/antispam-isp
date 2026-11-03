@@ -106,7 +106,7 @@ def make_manifest(source):
             raise ValueError("Falta un componente regular: " + name)
         files[name] = digest(path)
     return {"project": PROJECT, "format": 1, "upgrade_api": 1, "version": number,
-            "schema_version": 3, "python_min": [3, 8], "service_unit_api": 1, "files": files}
+            "schema_version": 4, "python_min": [3, 8], "service_unit_api": 1, "files": files}
 
 
 def validate_tree(source, expected=None):
@@ -399,7 +399,7 @@ def _service_active(config, commands):
     return commands.run("systemctl", ["is-active", path.name], ok=(0, 3, 4)).strip() == "active"
 
 
-def _snapshot_state(config, config_path, backup):
+def _snapshot_state(config, config_path, backup, commands=None):
     shutil.copy2(str(config_path), str(backup / "config.before"))
     state = Path(config["state_dir"])
     for name in ("state.sqlite3", "state.sqlite3-wal", "state.sqlite3-shm", "status.json", "recovery"):
@@ -413,9 +413,20 @@ def _snapshot_state(config, config_path, backup):
     cache = runtime.config_cache(config_path)
     if cache.exists():
         shutil.copy2(str(cache), str(backup / "config.last-good.json"))
+    if commands is not None and (Path(config["postfix_config"]) / "main.cf").is_file():
+        files = [Path(config["postfix_config"]) / name for name in ("outbound-spam-submit-blocked", "outbound-spam-submit-blocked.db")]
+        files.append(Path(config["state_dir"]) / "postfix-submit-backup.json")
+        saved = {"parameter": commands.pc("-h", "authorized_submit_users"), "files": {}}
+        for path in files:
+            if path.is_symlink():
+                raise ValueError("Archivo de ACL local no debe ser un enlace")
+            saved["files"][str(path)] = None
+            if path.exists():
+                saved["files"][str(path)] = {"hex": path.read_bytes().hex(), "mode": stat.S_IMODE(path.stat().st_mode)}
+        write(backup / "postfix-submit.before.json", json.dumps(saved))
 
 
-def _restore_state(config, config_path, backup):
+def _restore_state(config, config_path, backup, commands=None):
     failed = backup / "failed-state"
     failed.mkdir(mode=0o700, exist_ok=True)
     state = Path(config["state_dir"])
@@ -440,6 +451,23 @@ def _restore_state(config, config_path, backup):
         shutil.copy2(str(backup / "config.last-good.json"), str(cache))
     elif cache.exists():
         os.replace(str(cache), str(failed / "config.last-good.json"))
+    snapshot = backup / "postfix-submit.before.json"
+    if commands is not None and snapshot.exists():
+        saved = json.loads(snapshot.read_text())
+        installed = "!hash:" + str(Path(config["postfix_config"]) / "outbound-spam-submit-blocked")
+        installed += ", " + saved["parameter"] if saved["parameter"] else ""
+        actual = commands.pc("-h", "authorized_submit_users")
+        if actual == installed and actual != saved["parameter"]:
+            commands.pc("-e", "authorized_submit_users=" + saved["parameter"])
+            commands.run("postfix", ["-c", config["postfix_config"], "reload"])
+            for name, data in saved["files"].items():
+                path = Path(name)
+                if data is None:
+                    if path.exists():
+                        path.unlink()
+                else:
+                    path.write_bytes(bytes.fromhex(data["hex"]))
+                    path.chmod(data["mode"])
 
 
 def _owned_entrypoints(target, source):
@@ -585,7 +613,7 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                         if time.monotonic() >= deadline:
                             raise ValueError("Una operación manual impide actualizar")
                         time.sleep(0.1)
-                _snapshot_state(config, config_path, backup)
+                _snapshot_state(config, config_path, backup, commands)
                 state_saved = True
             if lock_root != root:
                 migration_lock = migrate_legacy(target, config_path)
@@ -644,7 +672,7 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
             runtime.audit("instalacion_error", error=str(exc), nuevo_servicio_iniciado=started, respaldo=str(backup))
             if not started:
                 if existing and state_saved:
-                    _restore_state(config, config_path, backup)
+                    _restore_state(config, config_path, backup, commands)
                 if changed:
                     if old_link:
                         temp = root / (".rollback-" + secrets.token_hex(4))

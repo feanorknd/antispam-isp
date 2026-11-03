@@ -57,16 +57,19 @@ Los archivos de configuración deben pertenecer a root y tener modo `0600`. En e
 
 ## 3. Comprobar la configuración
 
-Con las acciones inicialmente desactivadas:
+Con el acceso SQL a ISPConfig disponible e instalando primero la ACL local predeterminada:
 
 ```bash
 /root/scripts/outbound-spam.sh --version
+/root/scripts/outbound-spam.sh --install-local-guard
 /root/scripts/outbound-spam.sh --doctor
 ```
 
 `--doctor` comprueba dependencias, carga de configuración de Postfix y disponibilidad de SQLite si se ha activado `block_smtp`. Los formatos concretos de contraseña y el registro ISPConfig se comprueban al ejecutar esa acción; la prueba completa contra la instalación real se registra en [TASKS.md](TASKS.md).
 
 Para clasificar destinatarios pendientes, `routing_mode=auto` utiliza `postconf` y `postmap` sobre los mapas ya configurados. Con rutas o transportes especiales, consultar [ARCHITECTURE.md](ARCHITECTURE.md).
+
+Desde 1.3.0, `--doctor` comprueba también `web_domain` y la ACL local si están activados `monitor_local`/`block_local` (ambos true por defecto). `--install-local-guard` valida y recarga Postfix. El cliente mysql y su acceso por socket deben estar disponibles. Para diagnosticar UID y dominios sin enviar correo: `--inspect-local-user web6 --sender cuenta@su-dominio.example`. Véase [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
 ## 4. Instalar el bloqueo SMTP del plan A
 
@@ -87,6 +90,7 @@ El comando:
 4. Crea la clase `outbound_spam_remote` y la consulta `outbound-spam-access-recipient.cf`: devuelve `DUNNO` para locales y 451 para remotos. Añade las referencias necesarias a `proxy_read_maps`.
 5. Comprueba sobrescrituras en `master.cf`, ejecuta `postfix check` y reinicia Postfix.
 6. Guarda las restricciones previas y una copia de `main.cf` dentro del directorio privado de estado.
+7. Con `monitor_local=true`, instala también la ACL hash de sendmail/postdrop, o verifica que ya esté instalada.
 
 Las sobrescrituras por servicio incompatibles se notifican para que el administrador las adapte: no se reemplazan las restricciones específicas de otros servicios.
 

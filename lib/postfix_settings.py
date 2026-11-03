@@ -3,6 +3,7 @@ import json
 import math
 import os
 from pathlib import Path
+import pwd
 import re
 import secrets
 import shlex
@@ -20,8 +21,210 @@ ACCOUNTS_BEGIN = "# BEGIN OUTBOUND-SPAM ACCOUNT RULES"
 ACCOUNTS_END = "# END OUTBOUND-SPAM ACCOUNT RULES"
 
 
+class MonitorError(Exception):
+    pass
+
+
+def is_local(account):
+    return isinstance(account, str) and bool(re.fullmatch(r"local:[0-9]+", account))
+
+
+def unix_identity(uid):
+    try:
+        entry = pwd.getpwuid(int(uid))
+    except KeyError:
+        raise MonitorError("UID local sin usuario del sistema: " + str(uid))
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*\$?", entry.pw_name):
+        raise MonitorError("Usuario local no representable en la ACL Postfix")
+    return {"uid": entry.pw_uid, "user": entry.pw_name, "home": entry.pw_dir}
+
+
+def domain_belongs(domain, domains):
+    return bool(domain and domains is not None and (domain in domains or any(
+        d.startswith("*.") and domain.endswith(d[1:]) for d in domains)))
+
+
+class Websites:
+    """Instantánea de dominios de webs ISPConfig, cacheada por pasada."""
+    def __init__(self, config, query):
+        self.c, self.query = config, query
+        self.rows = None
+
+    def load(self):
+        if self.rows is None:
+            text = self.query("SELECT domain_id,parent_domain_id,HEX(domain),HEX(system_user),HEX(type),HEX(subdomain) "
+                              "FROM web_domain WHERE server_id=%d;" % self.c["ispconfig_server_id"])
+            rows = {}
+            try:
+                for line in text.splitlines():
+                    ident, parent, domain, user, kind, subdomain = line.split("\t")
+                    ident, parent = int(ident), int(parent)
+                    if ident in rows or ident <= 0 or parent < 0:
+                        raise ValueError()
+                    rows[ident] = {"id": ident, "parent": parent,
+                                   "domain": bytes.fromhex(domain).decode("utf-8").rstrip(".").encode("idna").decode("ascii").lower(),
+                                   "user": bytes.fromhex(user).decode("utf-8"),
+                                   "type": bytes.fromhex(kind).decode("utf-8"),
+                                   "subdomain": bytes.fromhex(subdomain).decode("utf-8")}
+            except (ValueError, UnicodeError):
+                raise MonitorError("Respuesta web_domain de ISPConfig no válida")
+            self.rows = rows
+        return self.rows
+
+    def domains(self, user):
+        rows = self.load()
+        selected = {i for i, row in rows.items() if row["user"] == user
+                    and (row["parent"] == 0 or row["type"].startswith("vhost"))}
+        if not selected:
+            return None
+        # No heredar un subdominio con su propio usuario/pool.
+        while True:
+            children = {i for i, row in rows.items() if row["parent"] in selected
+                        and row["user"] in ("", user)}
+            if children <= selected:
+                break
+            selected |= children
+        domains = {rows[i]["domain"] for i in selected if rows[i]["domain"]}
+        for i in selected:
+            if rows[i]["subdomain"] in ("www", "*"):
+                domains.add(("www." if rows[i]["subdomain"] == "www" else "*.") + rows[i]["domain"])
+        return sorted(domains)
+
+
+class LocalGuard:
+    """ACL sendmail/postdrop. Pertenencia al mapa negado, sin reload por incidente."""
+    def __init__(self, config, commands, write):
+        self.c, self.cmd, self.write = config, commands, write
+        self.source = Path(config["postfix_config"]) / "outbound-spam-submit-blocked"
+        self.database = Path(str(self.source) + ".db")
+        self.backup = Path(config["state_dir"]) / "postfix-submit-backup.json"
+
+    @property
+    def restriction(self):
+        return "!hash:" + str(self.source)
+
+    def record(self):
+        try:
+            info = self.backup.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o077:
+                raise ValueError()
+            saved = json.loads(self.backup.read_text())
+            if saved["restriction"] != self.restriction:
+                raise ValueError()
+            return saved
+        except (OSError, ValueError, KeyError):
+            raise MonitorError("Respaldo de la ACL local ausente o no válido")
+
+    def verify(self):
+        saved = self.record()
+        if self.cmd.pc("-h", "authorized_submit_users") != saved["installed"]:
+            raise MonitorError("authorized_submit_users cambió; revise --install-local-guard")
+        if not self.database.is_file() or self.database.is_symlink():
+            raise MonitorError("Mapa de bloqueo local ausente")
+
+    def users(self):
+        if not self.database.exists():
+            raise MonitorError("Mapa de bloqueo local ausente")
+        output = self.cmd.run("postmap", ["-c", self.c["postfix_config"], "-s", "hash:" + str(self.source)])
+        users = set()
+        for line in output.splitlines():
+            fields = line.split()
+            if len(fields) != 2 or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*\$?", fields[0]):
+                raise MonitorError("Mapa de bloqueo local no válido")
+            users.add(fields[0])
+        return users
+
+    def publish(self, users, verify=True):
+        if verify:
+            self.verify()
+        users = set(users)
+        if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.-]*\$?", u) for u in users):
+            raise MonitorError("Usuario no válido para el mapa de bloqueo local")
+        temp = self.source.with_name("." + self.source.name + "-" + secrets.token_hex(8))
+        indexed = Path(str(temp) + ".db")
+        text = "# Gestionado por outbound-spam: usuarios locales bloqueados\n"
+        text += "".join(u + " blocked\n" for u in sorted(users))
+        try:
+            self.write(temp, text, 0o644)
+            self.cmd.run("postmap", ["-c", self.c["postfix_config"], "hash:" + str(temp)])
+            os.chmod(str(indexed), 0o644)
+            with indexed.open("rb") as stream:
+                os.fsync(stream.fileno())
+            for user in users:
+                if not self.cmd.run("postmap", ["-c", self.c["postfix_config"], "-q", user, "hash:" + str(temp)]).strip():
+                    raise MonitorError("No se verifica el bloqueo local de " + user)
+            os.replace(str(indexed), str(self.database))
+            self.write(self.source, text, 0o644)
+        finally:
+            for path in (temp, indexed):
+                if path.exists():
+                    path.unlink()
+
+    def install(self, users=()):
+        if re.search(r"[\s,{}\"'\\]", str(self.source)):
+            raise MonitorError("Ruta no válida para el mapa de inyección local")
+        actual = self.cmd.pc("-h", "authorized_submit_users")
+        if self.backup.exists():
+            saved = self.record()
+            if actual != saved["installed"]:
+                raise MonitorError("authorized_submit_users cambió después de instalar la ACL local")
+            self.verify()
+            published = self.users()
+            if published - set(users):
+                raise MonitorError("La ACL local conserva bloqueos sin historial; no se eliminan durante instalación/upgrade")
+            if published != set(users):
+                self.publish(users)
+            return False
+        if self.source.exists() or self.database.exists() or self.restriction in actual:
+            raise MonitorError("Archivos o restricción local existentes sin respaldo gestionado")
+        if "hash" not in self.cmd.pc("-m").splitlines():
+            raise MonitorError("Postfix necesita soporte hash para el bloqueo local")
+        installed = self.restriction + (", " + actual if actual else "")
+        saved = {"restriction": self.restriction, "original": actual, "installed": installed}
+        self.write(self.backup, json.dumps(saved))
+        changed = False
+        try:
+            self.publish(users, verify=False)
+            changed = True
+            self.cmd.pc("-e", "authorized_submit_users=" + installed)
+            self.cmd.run("postfix", ["-c", self.c["postfix_config"], "check"])
+            self.verify()
+            self.cmd.run("postfix", ["-c", self.c["postfix_config"], "reload"])
+        except Exception:
+            try:
+                if changed:
+                    self.cmd.pc("-e", "authorized_submit_users=" + actual)
+                    self.cmd.run("postfix", ["-c", self.c["postfix_config"], "reload"])
+            finally:
+                if self.cmd.pc("-h", "authorized_submit_users") == actual:
+                    for path in (self.source, self.database, self.backup):
+                        if path.exists():
+                            path.unlink()
+            raise
+        return True
+
+    def uninstall(self):
+        self.verify()
+        if self.users():
+            raise MonitorError("Desbloquee las webs antes de retirar la ACL local")
+        saved = self.record()
+        try:
+            self.cmd.pc("-e", "authorized_submit_users=" + saved["original"])
+            self.cmd.run("postfix", ["-c", self.c["postfix_config"], "check"])
+            self.cmd.run("postfix", ["-c", self.c["postfix_config"], "reload"])
+        except Exception:
+            self.cmd.pc("-e", "authorized_submit_users=" + saved["installed"])
+            self.cmd.run("postfix", ["-c", self.c["postfix_config"], "reload"])
+            raise
+        self.source.unlink()
+        self.database.unlink()
+        self.backup.rename(str(self.backup) + ".removed-" + secrets.token_hex(4))
+
+
 def account_address(value):
     """Formato de cuenta SASL soportado: local dot-atom y dominio DNS/IDNA."""
+    if re.fullmatch(r"local:[0-9]+", value):
+        return "local:" + str(int(value.split(":", 1)[1]))
     if len(value) > 254 or value.count("@") != 1 or value.startswith("-"):
         raise ValueError("Cuenta de correo inválida: " + repr(value))
     local, domain = value.split("@")

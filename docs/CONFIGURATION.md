@@ -49,9 +49,13 @@ Antes de guardar se evalúa y valida la configuración resultante, y se verifica
 
 Los cambios se adoptan en la siguiente pasada, sin reiniciar servicio ni Postfix. **No cierran incidencias, retiran bloqueos ni liberan o eliminan correo ya retenido**. Si se ha corregido un falso positivo, utilizar después `--resolve-user CUENTA` para resolverlo coordinadamente, o los comandos individuales de [OPERATIONS.md](OPERATIONS.md).
 
+Desde 1.3.0 estas reglas también aceptan `local:UID`, por ejemplo `--set-custom-limit local:5009 300 3600`. Esa identidad representa el usuario UNIX de una web, descubierto desde pickup e ISPConfig; no hace falta configurar sus dominios manualmente. El nombre `local:UID` está reservado y no puede utilizarse como identidad SASL.
+
 ### Dominio remitente distinto
 
 Se compara el dominio del **remitente SMTP del sobre** (`MAIL FROM`, registrado en `qmgr` o leído de la cola) con el de la cuenta SASL. No se utiliza la cabecera visible `From:`.
+
+Para una identidad local se compara con los dominios propios de la web y sus alias/subdominios asociados, obtenidos automáticamente de `web_domain` en ISPConfig. Un dominio alojado para otro cliente del mismo servidor no se considera propio. Véase [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
 Si en la ventana hay destinatarios externos de un mensaje cuyo dominio remitente difiere, el límite de **toda esa cuenta en esa ventana** pasa a `max(1, límite_base // 4)`. Ejemplo: 100 → 25; una cuenta particular con límite 200 → 50. El disparo sigue siendo por superación estricta: con límite 25, el destinatario 26 provoca la alerta.
 
@@ -65,10 +69,14 @@ Los mensajes exclusivamente locales no activan esa reducción. Al salir de la ve
 |---|---|---|
 | `notify` | `true` | Envío inicial y recordatorios a `report` |
 | `block_smtp` | `false` | Responder 451 a destinatarios remotos de la cuenta; mantener los controles originales para locales |
+| `monitor_local` | `true` | Atribuir pickup UID a webs y obtener automáticamente sus dominios en ISPConfig |
+| `block_local` | `true` | Tras superar la cuota externa de una web, suspender toda su inyección sendmail/postdrop mediante ACL hash |
 | `hold_queue` | `false` | Retener mensajes pendientes de esa cuenta cuando ya no quedan entregas locales pendientes |
 | `reset_password` | `false` | Sustituir el hash de contraseña en ISPConfig y vaciar su caché de autenticación |
 | `reminder_interval` | `21600` | Segundos entre intentos de aviso por cuenta; mínimo obligatorio de seis horas |
 | `sample_count` | `10` | Número máximo de mensajes de ejemplo |
+
+`block_local` es independiente de `block_smtp`; el upgrade instala su integración y recarga Postfix una sola vez. Los incidentes locales nunca generan una acción `reset_password`. `hold_queue` y `notify` se aplican a ambas clases de identidad. La ACL local no distingue destinatarios después del bloqueo: impide también nuevas inyecciones para buzones locales, aunque estos no consuman cuota. Detalles y diagnóstico en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
 Al abrir un incidente se registran las acciones habilitadas. Desactivar una acción suspende sus reintentos pendientes; no revierte acciones ya completadas. Para incorporar bloqueo/cambio de contraseña a un incidente anterior que se abrió con esas opciones desactivadas, reconocerlo y dejar que la actividad nueva cree otro incidente, o resolverlo administrativamente.
 

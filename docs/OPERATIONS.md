@@ -2,6 +2,21 @@
 
 Los ejemplos asumen el script instalado en `/root/scripts/outbound-spam.sh`.
 
+## Webs PHP/sendmail desde 1.3.0
+
+Las cuentas `local:UID`, como `local:5009`, identifican usuarios UNIX de webs ISPConfig. Los comandos de incidentes, límites, excepciones y cola aceptan esa identidad:
+
+```bash
+/root/scripts/outbound-spam.sh --inspect-local-user web6 --sender recambios@gremiline.es
+/root/scripts/outbound-spam.sh --list-held local:5009
+/root/scripts/outbound-spam.sh --block-user local:5009
+/root/scripts/outbound-spam.sh --resolve-user local:5009
+```
+
+En el caso local, `--block-user` suspende toda nueva inyección sendmail/postdrop del usuario, también a destinatarios locales. Los bloqueos automáticos solo se disparan por exceso de destinatarios externos. `--resolve-user` libera retenciones propias, reconoce el incidente y retira esa suspensión; `--unblock` solo retira el bloqueo, y `--ack` solo reconoce. Ninguna acción local restablece contraseñas de buzones. Las operaciones de cola requieren la atribución fiable de pickup y la generación de sobre verificada.
+
+La consulta `--inspect-local-user` no requiere procesos PHP vivos. Guía detallada, alcance SMTP sin AUTH y batería de pruebas: [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
+
 ## Consulta y ejecución
 
 ```bash

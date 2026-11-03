@@ -1,0 +1,28 @@
+{
+  "version": "1.3.0",
+  "date": "2026-11-03",
+  "environments": [
+    {"image": "ubuntu:focal", "python": "3.8.10", "postfix": "3.4.13", "integration_tests": 213, "http_tests": 9, "failures": 0, "skipped": 0},
+    {"image": "ubuntu:noble", "python": "3.12.3", "postfix": "3.8.6", "integration_tests": 213, "http_tests": 9, "failures": 0, "skipped": 0},
+    {"image": "ubuntu:jammy", "python": "3.10.12", "postfix": "3.6.4", "local_submission_tests": 25, "failures": 0, "skipped": 0}
+  ],
+  "released_upgraders_tested": ["1.0.0", "1.0.2", "1.1.0", "1.2.0", "1.2.1", "1.2.2"],
+  "ispconfig_database": "simulated SQL rows; production validation commands in LOCAL_SUBMISSION.md",
+  "network_during_native_tests": "none",
+  "checks": {
+    "bash_syntax": "passed",
+    "shellcheck_warning": "passed",
+    "local_uid_attribution_and_external_only_quota": "passed",
+    "automatic_website_domains_aliases_subdomains_and_foreign": "passed",
+    "separate_sasl_and_local_actions_no_local_password_reset": "passed",
+    "real_setgid_postdrop_and_uid_sendmail": "passed",
+    "atomic_hash_publish_block_unblock_without_reload": "passed",
+    "released_122_upgrader_installs_local_acl_and_reloads_postfix": "passed",
+    "installed_cli_inspects_uid_and_sender_foreign": "passed",
+    "local_queue_hold_release_generation_verification": "passed",
+    "unix_identity_and_queue_binding_critical_recovery": "passed",
+    "unknown_published_blocks_preserved": "passed",
+    "local_acl_upgrade_rollback": "passed",
+    "http_lifecycle_and_migration_regressions": "passed"
+  }
+}

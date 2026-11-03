@@ -4,6 +4,10 @@ Los directorios de pruebas y datos de validación se conservan **fuera del repos
 
 ## Pruebas locales
 
+Validación 1.3.0 (2026-11-03): **213 pruebas completas + 9 HTTP** en Focal y Noble, y **25 pruebas locales** en Jammy/Postfix 3.6.4. Resultado: [TEST_RESULTS_1.3.0.json](TEST_RESULTS_1.3.0.json). La nueva cobertura incluye UID/PID, dominios y foreign automáticos, cuota externa, ausencia de reset local, ACL hash sin reload por incidente, rollback, recuperación y operación real de sendmail/postdrop con UID 5009. La prueba nativa actualiza mediante el actualizador público 1.2.2 e inspecciona la identidad desde el CLI instalado.
+
+Las pruebas de ISPConfig simulan sus filas SQL, incluyendo alias, descendientes, auto-subdominios y pools independientes. No se dispone de ISPConfig de producción en el entorno de desarrollo. Para contrastar UID/login/home, esquema y dominios en un servidor real, véase la batería de [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md#comprobaciones-en-un-ispconfig-real).
+
 Para el endpoint y la migración HTTP de 1.2.2, ejecutar `python3 tools/test_http_status.py -v`. Las nueve pruebas cubren estado completo, errores, antigüedad, valores no finitos, concurrencia, puerto ocupado, migración idempotente, CLI y ciclo de vida del demonio.
 
 ```bash

@@ -8,7 +8,7 @@ source "$1" >/dev/null
 source /dev/stdin >/dev/null
 for name in log_file state_dir max_sent time_period initial_position max_read_bytes \
     command_timeout stale_after rotation_grace retention_days max_action_age \
-    reminder_interval foreign_sender_divisor sample_count notify block_smtp hold_queue reset_password \
+    reminder_interval foreign_sender_divisor sample_count notify block_smtp hold_queue reset_password monitor_local block_local \
     postfix_outbound_delay postfix_destination_delay postfix_headroom postfix_client_message_limit \
     run_interval lock_wait service_unit backup_interval integrity_interval backup_copies status_http_host status_http_port \
     routing_mode guard_map postfix_config monit_config monit_enabled monit_script \

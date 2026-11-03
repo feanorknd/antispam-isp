@@ -13,6 +13,8 @@ Las instantáneas se renuevan al abrir una pasada y conservan la generación ant
 
 El mapa de integración Postfix es otra SQLite (`outbound-spam-access.sqlite3`), legible por `root:postfix`, modo 0640, y no contiene contraseñas. Los hashes de acciones de contraseña solo pueden aparecer en el estado/registro privado mientras sean necesarios para reconciliar la acción.
 
+Desde 1.3.0, la ACL de inyección local es un mapa hash separado: `outbound-spam-submit-blocked[.db]`, root/0644, que solo publica logins UNIX bloqueados. El respaldo `postfix-submit-backup.json` es privado. Los metadatos `local_identity_...` y `local_queue_...` del estado forman parte del diario crítico: conservan UID/login/home y la generación del sobre utilizada para autorizar operaciones. Una corrupción del índice puede repararse sin reload, contrastando el estado y la fuente gestionada; los bloqueos publicados sin historial se conservan y suspenden los automatismos. Véase [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
+
 ## Comprobaciones
 
 - `PRAGMA quick_check` del estado al abrir una operación.

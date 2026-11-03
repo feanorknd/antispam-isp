@@ -4,6 +4,7 @@
 |---|---|
 | [INSTALLATION.md](INSTALLATION.md) | Dependencias, copia de archivos, servicio, Monit y bloqueo SMTP |
 | [CONFIGURATION.md](CONFIGURATION.md) | Variables, arrays, umbrales y acciones |
+| [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md) | Webs PHP/sendmail, UID, dominios automáticos y pruebas en ISPConfig real |
 | [OPERATIONS.md](OPERATIONS.md) | Comandos, informes, retenciones, desbloqueo y recuperación |
 | [LOGGING.md](LOGGING.md) | Registro operativo privado, hora local y rotación semanal |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Correlación, clasificación externa, cursores, SQLite y garantías |
@@ -22,7 +23,7 @@
 
 - Plan A: análisis periódico y contención posterior a la detección.
 - Bash como interfaz y Python estándar como motor.
-- Solo envíos de cuentas autenticadas correctamente.
+- SMTP autenticado y, desde 1.3.0, inyecciones locales de webs identificadas por UID e ISPConfig.
 - Solo destinatarios externos; incluir mensajes todavía pendientes de salida.
 - ISPConfig de un único servidor.
 - Estado privado persistente fuera de `/tmp`.

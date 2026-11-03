@@ -1,6 +1,6 @@
 # Tareas y programación
 
-Actualizado: **2026-11-01**, versión 1.2.2.
+Actualizado: **2026-11-03**, versión 1.3.0.
 
 ## Completadas
 
@@ -75,10 +75,15 @@ Actualizado: **2026-11-01**, versión 1.2.2.
 - [x] Verificar 185 pruebas por distribución, incluidas colas reales y upgrade desde 1.2.0.
 - [x] Publicar 1.2.1 y verificar sin autenticación el descubrimiento desde 1.2.0/1.1.0/1.0.2, los checksums y el parser de los paquetes descargados.
 - [x] Publicar 1.2.2 tras 187 pruebas de integración y 9 HTTP en Focal y Noble; comprobar API pública, checksums, manifiestos y descubrimiento con los actualizadores 1.0.2/1.1.0/1.2.1.
+- [x] Atribuir envíos PHP/sendmail por UID y descubrir automáticamente dominios/alias/subdominios de la web en ISPConfig.
+- [x] Contar externos por identidad local, aplicar foreign y separar bloqueo local de acciones SMTP/contraseña.
+- [x] Publicar ACL hash de authorized_submit_users sin reload por incidente, con instalación automática y reload durante upgrade.
+- [x] Conservar identidad UNIX y generaciones de cola en recuperación; añadir inspector y comandos de comprobación real.
+- [x] Validar 213 pruebas completas + 9 HTTP en Focal/Noble y 25 de protección local en Jammy, con sendmail/postdrop real y actualizador público 1.2.2.
 
 ## En ejecución
 
-Ninguna tarea de publicación pendiente. Release estable verificado: https://github.com/feanorknd/antispam-isp/releases/tag/v1.2.2 . Notas: [RELEASE_1.2.2.md](RELEASE_1.2.2.md).
+Publicación y verificación de assets 1.3.0 en curso. Notas: [RELEASE_1.3.0.md](RELEASE_1.3.0.md).
 
 ## Programadas por el software, al instalarlo en el servidor
 
@@ -102,6 +107,7 @@ Estas tareas se han probado en el entorno de desarrollo; su programación operat
 
 - [ ] Configurar destinatarios de informes, remitente, límites y excepciones reales.
 - [ ] Ejecutar `--doctor` en el servidor ISPConfig de destino.
+- [ ] Contrastar `--inspect-local-user` y los dominios foreign con la base ISPConfig real; batería en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 - [ ] Validar sus transportes y mapas especiales con mensajes de prueba locales/externos.
 - [ ] Validar cambio de contraseña en una cuenta de prueba de la instalación ISPConfig real.
 - [ ] Instalar la integración SMTP, el servicio systemd y Monit en ese servidor.

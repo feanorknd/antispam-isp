@@ -11,8 +11,8 @@ import stat
 import time
 
 TABLES = ("incidents", "actions", "held", "blocks", "acknowledgements", "notice_state", "queue_ops")
-META = ("guard_installed", "guard_restart_pending", "recovery_pause")
-PREFIXES = ("hold_suppressed_", "resolution_")
+META = ("guard_installed", "guard_restart_pending", "local_guard_installed", "recovery_pause")
+PREFIXES = ("hold_suppressed_", "resolution_", "local_identity_", "local_queue_")
 
 
 class CorruptDatabase(ValueError):
@@ -62,7 +62,7 @@ def check_database(path, required=(), protected=True, deep=False):
             if set(required) - tables:
                 raise ValueError("SQLite sin el esquema esperado")
             if "meta" in required:
-                if db.execute("PRAGMA user_version").fetchone()[0] not in (0, 1, 2, 3):
+                if db.execute("PRAGMA user_version").fetchone()[0] not in (0, 1, 2, 3, 4):
                     raise ValueError("Versión SQLite de aplicación no compatible")
             checks = [("meta", "value")] if "meta" in required else []
             if deep:
