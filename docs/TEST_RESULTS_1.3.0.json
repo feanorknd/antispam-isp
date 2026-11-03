@@ -9,6 +9,18 @@
   "released_upgraders_tested": ["1.0.0", "1.0.2", "1.1.0", "1.2.0", "1.2.1", "1.2.2"],
   "ispconfig_database": "simulated SQL rows; production validation commands in LOCAL_SUBMISSION.md",
   "network_during_native_tests": "none",
+  "public_release": {
+    "url": "https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.0",
+    "source_commit": "2ff6b10e14ef1fdaa9f70ddb849b6b32af5879d6",
+    "unauthenticated_verification": "passed",
+    "upgraders": ["1.0.2", "1.1.0", "1.2.1", "1.2.2"],
+    "identical_manifests": true,
+    "reproducible_build": true,
+    "sha256": {
+      "outbound-spam-1.3.0.tar.gz": "296a1ef23677675a145c1a00ec7e03b6850f45df2170a18e9b64f246f0702f94",
+      "antispam-isp-1.3.0.tar.gz": "b1d390de6b978b3637270dbbcb2d0d1d8b15a3a2285c2d5510de8c8eb0dcaf5a"
+    }
+  },
   "checks": {
     "bash_syntax": "passed",
     "shellcheck_warning": "passed",

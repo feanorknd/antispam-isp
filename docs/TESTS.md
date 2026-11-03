@@ -8,6 +8,8 @@ Validación 1.3.0 (2026-11-03): **213 pruebas completas + 9 HTTP** en Focal y No
 
 Las pruebas de ISPConfig simulan sus filas SQL, incluyendo alias, descendientes, auto-subdominios y pools independientes. No se dispone de ISPConfig de producción en el entorno de desarrollo. Para contrastar UID/login/home, esquema y dominios en un servidor real, véase la batería de [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md#comprobaciones-en-un-ispconfig-real).
 
+Publicación v1.3.0 verificada sin autenticación: los actualizadores públicos 1.0.2, 1.1.0, 1.2.1 y 1.2.2 descubren el release estable, descargan su paquete correspondiente y validan checksums y manifiestos idénticos. El código descargado carga las nuevas clases y el CLI. La reconstrucción desde el commit de la etiqueta reproduce `296a1ef23677675a145c1a00ec7e03b6850f45df2170a18e9b64f246f0702f94` para el paquete principal. Los assets contienen la documentación fijada en esa etiqueta; `main` incorpora esta anotación posterior de verificación.
+
 Para el endpoint y la migración HTTP de 1.2.2, ejecutar `python3 tools/test_http_status.py -v`. Las nueve pruebas cubren estado completo, errores, antigüedad, valores no finitos, concurrencia, puerto ocupado, migración idempotente, CLI y ciclo de vida del demonio.
 
 ```bash

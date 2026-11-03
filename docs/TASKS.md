@@ -80,10 +80,11 @@ Actualizado: **2026-11-03**, versión 1.3.0.
 - [x] Publicar ACL hash de authorized_submit_users sin reload por incidente, con instalación automática y reload durante upgrade.
 - [x] Conservar identidad UNIX y generaciones de cola en recuperación; añadir inspector y comandos de comprobación real.
 - [x] Validar 213 pruebas completas + 9 HTTP en Focal/Noble y 25 de protección local en Jammy, con sendmail/postdrop real y actualizador público 1.2.2.
+- [x] Publicar 1.3.0 y verificar sin autenticación API latest, ambos paquetes, checksums, manifiestos idénticos y descubrimiento desde los actualizadores públicos 1.0.2/1.1.0/1.2.1/1.2.2. Reconstrucción reproducible confirmada.
 
 ## En ejecución
 
-Publicación y verificación de assets 1.3.0 en curso. Notas: [RELEASE_1.3.0.md](RELEASE_1.3.0.md).
+Ninguna tarea de publicación pendiente. Release estable verificado: https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.0 . Notas: [RELEASE_1.3.0.md](RELEASE_1.3.0.md). Queda la validación de la base ISPConfig de producción con la batería indicada abajo.
 
 ## Programadas por el software, al instalarlo en el servidor
 
