@@ -1,5 +1,14 @@
 # Cambios efectuados
 
+## 1.3.2 — 2026-11-03
+
+- Corregida la lectura de `HEX(system_user)=NULL` en alias ISPConfig sin usuario propio; ahora heredan la asociación del registro padre.
+- Conservada la separación de pools con usuario explícito distinto y la distinción entre SQL NULL y un nombre de usuario literal `NULL`.
+- Errores de inventario con fila, `domain_id` y campo, incluidos fallos de hexadecimal, UTF-8, IDNA e identificadores.
+- Regresiones públicas para los tres pares alias/padre observados en dos servidores, con dominios anonimizados, alias encadenados y pools separados.
+- Validación adicional con MariaDB 10.11 y esquema nullable equivalente; doctor e inspector del programa instalado probados después del upgrade desde 1.3.1.
+- Se mantiene la ampliación automática del `.conf`, esquema SQLite 4 y API de upgrade/systemd 1.
+
 ## 1.3.1 — 2026-11-03
 
 - Contrato permanente de configuración completa: cada upgrade incorpora todas las variables ausentes del `.conf`, usando el `.conf.example` del candidato como inventario, incluidas variables antiguas y arrays.

@@ -1,6 +1,6 @@
 # Outbound Spam Monitor
 
-Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión **1.3.1**.
+Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión **1.3.2**.
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
 
@@ -25,7 +25,7 @@ VERSION                       Versión de la distribución
 
 ## Instalación y actualización
 
-Descargar `outbound-spam-1.3.1.tar.gz` y `SHA256SUMS` del [release 1.3.1](https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.1), comprobar el checksum, extraer y ejecutar:
+Descargar `outbound-spam-1.3.2.tar.gz` y `SHA256SUMS` del [release 1.3.2](https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.2), comprobar el checksum, extraer y ejecutar:
 
 ```bash
 sudo ./install.sh --install-deps
@@ -45,6 +45,8 @@ El instalador conserva el archivo operativo y el estado. En `/root/scripts/` ins
 Al actualizar a 1.3.0 o posterior se instala automáticamente la ACL de inyección local y se ejecuta `postfix check` y `reload` si aún no estaba instalada, conservando la política anterior de `authorized_submit_users`. `monitor_local=true` y `block_local=true` son los valores por defecto. Solo los externos disparan el bloqueo, pero una web bloqueada pierde toda inyección con sendmail/postdrop, también para destinatarios locales.
 
 **Desde 1.3.1, `--upgrade` completa automáticamente todas las variables ausentes del `.conf`**, tomando como inventario el `.conf.example` de la versión instalada. Incluye variables antiguas que solo se heredaban por defecto, escalares y arrays. Conserva las asignaciones y valores del usuario, guarda respaldo privado y actualiza la caché. Si ya está instalada la última versión, también completa el `.conf` y sincroniza el ejemplo sin reiniciar servicios. Repetirlo no duplica variables ni reescribe una configuración completa.
+
+**1.3.2 corrige los alias ISPConfig con `system_user=NULL`**: se resuelven mediante la web padre. Los errores de inventario indican fila, ID y campo. No requiere modificar la base de datos.
 
 1.1.0 añade un registro privado en `/var/log/outbound-spam.log`: hora local y zona del servidor, tipo manual/servicio, estado, incidencias y resultados de las acciones. El instalador configura rotación semanal con ocho copias en `/etc/logrotate.d/outbound-spam`. Detalles y ejemplos en [logs operativos](docs/LOGGING.md).
 
@@ -85,6 +87,7 @@ Empezar por [docs/README.md](docs/README.md) y [la instalación](docs/INSTALLATI
 
 ```bash
 python3 tools/test_config_completion.py -v
+python3 tools/test_websites.py -v
 python3 tools/build_release.py --output dist
 ```
 

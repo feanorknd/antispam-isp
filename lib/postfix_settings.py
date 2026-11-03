@@ -55,19 +55,34 @@ class Websites:
             text = self.query("SELECT domain_id,parent_domain_id,HEX(domain),HEX(system_user),HEX(type),HEX(subdomain) "
                               "FROM web_domain WHERE server_id=%d;" % self.c["ispconfig_server_id"])
             rows = {}
-            try:
-                for line in text.splitlines():
-                    ident, parent, domain, user, kind, subdomain = line.split("\t")
-                    ident, parent = int(ident), int(parent)
-                    if ident in rows or ident <= 0 or parent < 0:
+            for number, line in enumerate(text.splitlines(), 1):
+                fields = line.split("\t")
+                ident = fields[0] if re.fullmatch(r"[0-9]{1,20}", fields[0]) else "?"
+                field = "columnas"
+                try:
+                    if len(fields) != 6:
                         raise ValueError()
+                    field = "domain_id"
+                    ident = int(fields[0])
+                    if ident in rows or ident <= 0:
+                        raise ValueError()
+                    field = "parent_domain_id"
+                    parent = int(fields[1])
+                    if parent < 0:
+                        raise ValueError()
+                    decoded = {}
+                    for field, value in zip(("domain", "system_user", "type", "subdomain"), fields[2:]):
+                        # HEX(NULL) devuelve el literal SQL NULL, no texto hexadecimal.
+                        # Un alias sin usuario propio hereda del padre en domains().
+                        decoded[field] = "" if field == "system_user" and value == "NULL" else bytes.fromhex(value).decode("utf-8")
+                    field = "domain"
+                    domain = decoded["domain"].rstrip(".").encode("idna").decode("ascii").lower()
                     rows[ident] = {"id": ident, "parent": parent,
-                                   "domain": bytes.fromhex(domain).decode("utf-8").rstrip(".").encode("idna").decode("ascii").lower(),
-                                   "user": bytes.fromhex(user).decode("utf-8"),
-                                   "type": bytes.fromhex(kind).decode("utf-8"),
-                                   "subdomain": bytes.fromhex(subdomain).decode("utf-8")}
-            except (ValueError, UnicodeError):
-                raise MonitorError("Respuesta web_domain de ISPConfig no válida")
+                                   "domain": domain, "user": decoded["system_user"],
+                                   "type": decoded["type"], "subdomain": decoded["subdomain"]}
+                except (ValueError, UnicodeError):
+                    raise MonitorError("Respuesta web_domain de ISPConfig no válida: fila=%d domain_id=%s campo=%s" %
+                                       (number, ident, field)) from None
             self.rows = rows
         return self.rows
 

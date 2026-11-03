@@ -1,0 +1,32 @@
+{
+  "version": "1.3.2",
+  "date": "2026-11-03",
+  "environments": [
+    {"image": "ubuntu:focal", "python": "3.8.10", "postfix": "3.4.13", "integration_tests": 219, "website_tests": 10, "config_completion_tests": 11, "http_tests": 9, "failures": 0, "skipped": 0},
+    {"image": "ubuntu:noble", "python": "3.12.3", "postfix": "3.8.6", "integration_tests": 219, "website_tests": 10, "config_completion_tests": 11, "http_tests": 9, "failures": 0, "skipped": 0}
+  ],
+  "database_regression": {
+    "engine": "10.11.19-MariaDB-ubu2204",
+    "nullable_schema_matches_reported_fields": true,
+    "server_datasets": 2,
+    "alias_parent_pairs": [[33, 32], [44, 5], [20, 6]],
+    "domains_anonymized": true,
+    "result": "passed"
+  },
+  "released_upgraders_tested": ["1.0.0", "1.0.2", "1.1.0", "1.2.0", "1.2.1", "1.2.2", "1.3.0", "1.3.1"],
+  "network_during_native_tests": "none",
+  "checks": {
+    "sql_null_system_user_inherits_parent_domains": "passed",
+    "empty_user_and_nested_aliases": "passed",
+    "explicit_other_pool_remains_separate": "passed",
+    "literal_null_username_not_confused_with_sql_null": "passed",
+    "orphan_or_userless_root_not_assigned_to_unrelated_user": "passed",
+    "foreign_uses_inherited_domains": "passed",
+    "errors_identify_row_domain_id_and_field": "passed",
+    "failed_load_retry_and_cache": "passed",
+    "real_131_upgrader_then_doctor_and_inspector_with_null_alias": "passed",
+    "real_postfix_local_quota_and_actions": "passed",
+    "complete_configuration_contract_retained": "passed",
+    "bash_syntax_and_shellcheck": "passed"
+  }
+}

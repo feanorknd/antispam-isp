@@ -4,7 +4,7 @@
 
 | Elemento | Versión |
 |---|---|
-| Aplicación | 1.3.1 |
+| Aplicación | 1.3.2 |
 | Esquema SQLite privado (`user_version`) | 4 |
 | Python mínimo | 3.8 |
 | Bash utilizado | 5.0 o posterior en las distribuciones verificadas |
@@ -12,7 +12,13 @@
 
 `VERSION` y `--version` deben coincidir; las pruebas lo comprueban. Las futuras modificaciones incompatibles del esquema deberán introducir una migración y actualizar este documento.
 
-## Matriz de la distribución 1.3.1
+## Matriz de la distribución 1.3.2
+
+Focal/Python 3.8/Postfix 3.4 y Noble/Python 3.12/Postfix 3.8: 219 pruebas completas de integración, 10 de dominios nullable, 11 del contrato de configuración y 9 HTTP correctas por entorno. Incluye el actualizador público 1.3.1 y doctor/inspector tras actualizar con un alias `system_user=NULL`.
+
+La consulta también se verificó con MariaDB 10.11.19 real y una tabla con los campos nullable del esquema reportado, usando dos conjuntos de datos equivalentes a los servidores afectados. Conserva esquema 4 y API de upgrade/systemd 1. Resultado: [TEST_RESULTS_1.3.2.json](TEST_RESULTS_1.3.2.json).
+
+## Matriz histórica de la distribución 1.3.1
 
 Focal/Python 3.8/Postfix 3.4 y Noble/Python 3.12/Postfix 3.8: 218 pruebas de integración verificadas por entorno, 11 del contrato de configuración y 9 HTTP. La validación incluye suite completa de 217 pruebas, otra regresión de upgrade desde 1.2.2 y repetición de la prueba local con el actualizador 1.3.0 y `--upgrade` sin release nuevo.
 

@@ -4,6 +4,10 @@ Los directorios de pruebas y datos de validación se conservan **fuera del repos
 
 ## Pruebas locales
 
+Validación 1.3.2 (2026-11-03): **219 pruebas completas de integración + 10 de dominios nullable + 11 de configuración + 9 HTTP por entorno** en Focal y Noble, sin errores ni omisiones. El escenario nativo utiliza el actualizador público 1.3.1, comprueba doctor e inspector sobre un alias con usuario SQL NULL y verifica después cuotas y contención con Postfix real. Resultado: [TEST_RESULTS_1.3.2.json](TEST_RESULTS_1.3.2.json).
+
+Pruebas públicas: `python3 tools/test_websites.py -v`. Reproducen los pares alias/padre 33→32, 44→5 y 20→6 con dominios anonimizados y usuarios no derivados de los IDs. Cubren NULL frente a usuario vacío/literal, herencia encadenada, pools independientes, foreign, errores de campo/identificador/IDNA y reintentos de lectura. Se ejecutó además la consulta real en MariaDB 10.11.19 con una tabla nullable equivalente al esquema reportado; los alias se asociaron correctamente a sus usuarios padre.
+
 Validación 1.3.1 (2026-11-03): **218 pruebas de integración verificadas + 11 de configuración + 9 HTTP por entorno** en Focal y Noble. Se ejecutó la suite completa de 217 pruebas y una regresión adicional del actualizador público 1.2.2; se repitió además la prueba con Postfix real usando el actualizador 1.3.0 y una segunda llamada a `--upgrade` sin versión nueva. Resultado: [TEST_RESULTS_1.3.1.json](TEST_RESULTS_1.3.1.json).
 
 El contrato de ampliación automática es público y se comprueba con `python3 tools/test_config_completion.py -v`: todas las variables del motor están en el ejemplo y en el archivo completado; se conservan valores y arrays; se añaden futuras variables; no hay duplicación ni reescritura innecesaria; se prueba caché, permisos, backup, concurrencia y rollback. Los escenarios de distribución verifican también el ejemplo instalado y una configuración privada parcial preexistente.
@@ -13,6 +17,8 @@ Release v1.3.1 comprobado sin autenticación con los actualizadores públicos 1.
 Validación 1.3.0 (2026-11-03): **213 pruebas completas + 9 HTTP** en Focal y Noble, y **25 pruebas locales** en Jammy/Postfix 3.6.4. Resultado: [TEST_RESULTS_1.3.0.json](TEST_RESULTS_1.3.0.json). La nueva cobertura incluye UID/PID, dominios y foreign automáticos, cuota externa, ausencia de reset local, ACL hash sin reload por incidente, rollback, recuperación y operación real de sendmail/postdrop con UID 5009. La prueba nativa actualiza mediante el actualizador público 1.2.2 e inspecciona la identidad desde el CLI instalado.
 
 Las pruebas de ISPConfig simulan sus filas SQL, incluyendo alias, descendientes, auto-subdominios y pools independientes. No se dispone de ISPConfig de producción en el entorno de desarrollo. Para contrastar UID/login/home, esquema y dominios en un servidor real, véase la batería de [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md#comprobaciones-en-un-ispconfig-real).
+
+En 1.3.2 se añadió la comprobación de protocolo y esquema con MariaDB real descrita arriba; no equivale a una instalación completa de ISPConfig.
 
 Publicación v1.3.0 verificada sin autenticación: los actualizadores públicos 1.0.2, 1.1.0, 1.2.1 y 1.2.2 descubren el release estable, descargan su paquete correspondiente y validan checksums y manifiestos idénticos. El código descargado carga las nuevas clases y el CLI. La reconstrucción desde el commit de la etiqueta reproduce `296a1ef23677675a145c1a00ec7e03b6850f45df2170a18e9b64f246f0702f94` para el paquete principal. Los assets contienen la documentación fijada en esa etiqueta; `main` incorpora esta anotación posterior de verificación.
 

@@ -2,16 +2,16 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-## Instalación nueva desde el release 1.3.1
+## Instalación nueva desde el release 1.3.2
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.1/outbound-spam-1.3.1.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.1/SHA256SUMS
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.2/outbound-spam-1.3.2.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.2/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf outbound-spam-1.3.1.tar.gz
-sudo ./outbound-spam-1.3.1/install.sh --install-deps
+tar -xzf outbound-spam-1.3.2.tar.gz
+sudo ./outbound-spam-1.3.2/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
@@ -55,6 +55,12 @@ Al preparar 1.2.2 se añaden al final de la configuración `status_http_host=127
 
 Desde el actualizador 1.0.2 se revisa también la definición systemd existente. Una unidad propia intacta se actualiza con la plantilla del candidato si declara `service_unit_api=1`; se guarda su copia y se ejecuta `daemon-reload`. Se preservan `ExecStart` (incluidos config/ruta de estado), el estado parado/activo y los archivos `.service.d/`. Una unidad base personalizada se conserva y se informa de ello. Si falla `daemon-reload` antes del arranque nuevo se restaura la definición anterior junto con código/estado.
 
+### Alias ISPConfig con usuario NULL: corrección 1.3.2
+
+Corrige `Respuesta web_domain de ISPConfig no válida` cuando un alias tiene `system_user=NULL`, dato válido en ISPConfig. Se interpreta como ausencia de usuario propio y se hereda la asociación de la web padre. El ID padre no se convierte en un nombre `webN`: se utiliza el usuario UNIX registrado en esa web. No modificar los registros SQL para actualizar.
+
+Tras `--upgrade`, comprobar `--version` y `--doctor`. Los errores de formato restantes identifican fila, `domain_id` y campo sin publicar el contenido de los datos. Se conserva la ampliación automática de configuración de 1.3.1, esquema 4 y API de upgrade/systemd 1.
+
 ### Configuración completa automáticamente desde 1.3.1
 
 El `.conf.example` versionado es el inventario de variables que debe contener el `.conf`. Cada upgrade añade **todas** las ausentes, aunque ya estuvieran en el ejemplo de la versión anterior. Este contrato se aplica también a futuras variables y a instalaciones sobre una configuración privada preexistente.
@@ -87,7 +93,7 @@ Se utiliza el `--upgrade` habitual, conservando configuración y estado. Los com
 
 ### Migración desde 1.0.x a 1.1.0 o posterior
 
-El primer upgrade utiliza todavía el actualizador instalado. Por ello el paquete de 1.3.1 incluye también `antispam-isp-1.3.1.tar.gz`, un paquete de compatibilidad con el mismo código y manifiesto que el principal. El repositorio de GitHub conserva su URL histórica; el nombre operativo del programa y del paquete principal es **outbound-spam**.
+El primer upgrade utiliza todavía el actualizador instalado. Por ello el paquete de 1.3.2 incluye también `antispam-isp-1.3.2.tar.gz`, un paquete de compatibilidad con el mismo código y manifiesto que el principal. El repositorio de GitHub conserva su URL histórica; el nombre operativo del programa y del paquete principal es **outbound-spam**.
 
 La preparación de 1.1.0 traslada el almacenamiento de `/root/scripts/.antispam/` a `/var/lib/outbound-spam/`. Durante el cierre del actualizador antiguo se mantiene un alias transitorio; un finalizador privado espera su bloqueo y la limpieza de la descarga, y retira ese alias y la caché antigua automáticamente. Se registra `migracion_completada` en el log. El código nuevo y el servicio ya utilizan la ubicación nueva, incluso durante ese cierre. El traslado también contempla sistemas de archivos distintos para `/root` y `/var`.
 
@@ -104,8 +110,8 @@ Una actualización no regenera una configuración desaparecida: se cancela antes
 /root/scripts/outbound-spam.conf
 /root/scripts/outbound-spam-status.sh
 /root/scripts/outbound-spam.conf.example
-/var/lib/outbound-spam/current -> releases/1.3.1
-/var/lib/outbound-spam/releases/1.3.1/
+/var/lib/outbound-spam/current -> releases/1.3.2
+/var/lib/outbound-spam/releases/1.3.2/
 /var/lib/outbound-spam/installation.json
 /var/lib/outbound-spam/upgrade.lock
 /var/lib/outbound-spam/upgrade-backup-*/
