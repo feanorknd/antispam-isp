@@ -436,7 +436,8 @@ def _restore_state(config, config_path, backup, commands=None):
         current = Path(config_path).read_text()
         # Restaurar únicamente nuestra ampliación; conservar una edición externa.
         suffix = current[len(original):] if current.startswith(original) else ""
-        if re.fullmatch(r"\n?\n# Estado HTTP del servicio\n(?:status_http_(?:host=127\.0\.0\.1|port=23456)\n){1,2}", suffix):
+        if (runtime.completed_config_matches(original.encode("utf-8"), current.encode("utf-8")) or
+                re.fullmatch(r"\n?\n# Estado HTTP del servicio\n(?:status_http_(?:host=127\.0\.0\.1|port=23456)\n){1,2}", suffix)):
             write(config_path, original)
     for name in ("state.sqlite3", "state.sqlite3-wal", "state.sqlite3-shm", "status.json", "recovery"):
         current, saved = state / name, backup / name
@@ -492,16 +493,14 @@ def _install_entrypoints(source, target):
 
 
 def assigned_names(text):
-    """Detección orientativa de asignaciones Bash, sin ejecutar el archivo privado."""
-    return set(re.findall(r"(?m)^\s*(?:(?:declare\s+-[A-Za-z]+|export)\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=", text))
+    return runtime.assigned_names(text)
 
 
 def missing_new_variables(source, target, config_path):
-    previous = target / "outbound-spam.conf.example"
-    if not previous.is_file() or not config_path.is_file():
+    """Compatibilidad de diagnóstico: todas las ausentes, no solo nombres nuevos."""
+    if not config_path.is_file():
         return []
-    added = assigned_names((source / "outbound-spam.conf.example").read_text()) - assigned_names(previous.read_text())
-    return sorted(added - assigned_names(config_path.read_text()))
+    return sorted(assigned_names((source / "outbound-spam.conf.example").read_text()) - assigned_names(config_path.read_text()))
 
 
 def _prepare(source, config, config_path, lock_fd):
@@ -510,6 +509,7 @@ def _prepare(source, config, config_path, lock_fd):
     result = subprocess.run(command, pass_fds=(lock_fd,), capture_output=True, text=True, timeout=180)
     if result.returncode:
         raise ValueError("La preparación de la actualización ha fallado: " + result.stderr.strip()[:300])
+    return json.loads(result.stdout)
 
 
 def service_update_plan(release, manifest, target, config, config_path, previous_installation):
@@ -565,7 +565,8 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
             raise ValueError("La configuración existente debe ser privada y pertenecer al usuario ejecutor")
     elif existing:
         raise ValueError("La configuración existente no está disponible; no se crea ni sustituye durante un upgrade")
-    new_variables = missing_new_variables(source, target, config_path) if config_path.exists() else []
+    before_variables = assigned_names(config_path.read_text()) if config_path.exists() else set()
+    initial_config = config_path.read_bytes() if config_existed and not existing else None
     if existing and config is None:
         config, commands = installed_context(source, config_path)
     legacy = target / ".antispam"
@@ -630,6 +631,8 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                 preparer(release, config, config_path, operation_lock.fileno())
                 if not config_path.is_file() or config_path.is_symlink():
                     raise ValueError("La configuración dejó de estar disponible; se cancela sin regenerarla")
+                if assigned_names((release / "outbound-spam.conf.example").read_text()) - assigned_names(config_path.read_text()):
+                    raise ValueError("La preparación no completó todas las variables de configuración")
             changed = True
             _install_entrypoints(release, target)
             _activate(target, release)
@@ -639,6 +642,9 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
                 initial = initial.replace("notify=true", "notify=false")
                 initial = re.sub(r"(?m)^declare -A custom_limits=.*$", "declare -A custom_limits=()", initial)
                 write(config_path, initial)
+            if not existing:
+                from outbound_spam import Config
+                runtime.migrate_config(config_path, release, Config.from_bytes, write)
             if unit_plan and unit_plan["updated"]:
                 unit_changed = True
                 write(Path(config["service_unit"]), unit_plan["text"], unit_mode)
@@ -665,12 +671,17 @@ def deploy(source, target, config_path=None, config=None, commands=None, prepare
             runtime.audit("instalacion_completada", version=manifest["version"], servicio_reiniciado=was_active, respaldo=str(backup))
             return {"version": manifest["version"], "target": str(target), "config": str(config_path),
                     "service_restarted": was_active, "backup": str(backup),
-                    "config_preserved": config_existed, "config_created": not config_existed, "missing_new_variables": new_variables,
+                    "config_preserved": config_existed, "config_created": not config_existed,
+                    "config_variables_added": sorted(assigned_names(config_path.read_text()) - before_variables),
+                    "missing_new_variables": sorted(assigned_names((release / "outbound-spam.conf.example").read_text()) - assigned_names(config_path.read_text())),
                     "service_unit_updated": bool(unit_plan and unit_plan["updated"]),
                     "service_unit_note": unit_plan["note"] if unit_plan else "Servicio no instalado"}
         except Exception as exc:
             runtime.audit("instalacion_error", error=str(exc), nuevo_servicio_iniciado=started, respaldo=str(backup))
             if not started:
+                if initial_config is not None:
+                    from outbound_spam import Config
+                    runtime.rollback_config_completion(config_path, initial_config, source, Config.from_bytes, write)
                 if existing and state_saved:
                     _restore_state(config, config_path, backup, commands)
                 if changed:
@@ -726,7 +737,8 @@ def upgrade(target, current, config_path, config, commands, downloader=fetch, pr
         raise ValueError("La instalación no corresponde a este proyecto/ruta")
     release = latest_release(current, downloader)
     if release is None:
-        return {"updated": False, "version": current, "message": "Ya está instalada la última versión estable"}
+        completed = complete_installed_config(target, config_path, config)
+        return dict(completed, updated=False, version=current, message="Ya está instalada la última versión estable; configuración completa")
     number, name, urls = release
     root = runtime.private_data()
     with tempfile.TemporaryDirectory(prefix="download-", dir=str(root)) as folder:
@@ -743,6 +755,40 @@ def upgrade(target, current, config_path, config, commands, downloader=fetch, pr
         source = unpack(archive, staging / "unpacked", number)
         result = deploy(source, target, config_path, config, commands, preparer)
         return dict(result, updated=True)
+
+
+def complete_installed_config(target, config_path, config):
+    """Incluso sin release nuevo, --upgrade sincroniza configuración y ejemplo."""
+    root = runtime.private_data()
+    source = root / "current"
+    validate_tree(source)
+    with (root / "upgrade.lock").open("a") as upgrade_lock:
+        os.chmod(str(root / "upgrade.lock"), 0o600)
+        try:
+            fcntl.flock(upgrade_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError("Ya hay otra instalación/actualización en curso")
+        state = protected_directory(config["state_dir"], create=True)
+        with (state / "lock").open("a") as lock:
+            os.chmod(str(state / "lock"), 0o600)
+            deadline = time.monotonic() + config["lock_wait"]
+            while True:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        raise ValueError("Una operación activa impide completar la configuración")
+                    time.sleep(0.1)
+            _owned_entrypoints(target, source)
+            from outbound_spam import Config
+            completed = runtime.migrate_config(config_path, source, Config.from_bytes, write)
+            example = Path(target) / "outbound-spam.conf.example"
+            text = (source / "outbound-spam.conf.example").read_text()
+            if not example.exists() or example.read_text() != text:
+                write(example, text)
+            return {"config_variables_added": completed["added"], "config_completion_backup": completed["backup"],
+                    "missing_new_variables": []}
 
 
 def main():

@@ -1,0 +1,25 @@
+{
+  "version": "1.3.1",
+  "date": "2026-11-03",
+  "environments": [
+    {"image": "ubuntu:focal", "python": "3.8.10", "postfix": "3.4.13", "integration_tests_verified": 218, "full_suite_tests": 217, "additional_upgrade_test": 1, "config_completion_tests": 11, "http_tests": 9, "failures": 0, "skipped": 0},
+    {"image": "ubuntu:noble", "python": "3.12.3", "postfix": "3.8.6", "integration_tests_verified": 218, "full_suite_tests": 217, "additional_upgrade_test": 1, "config_completion_tests": 11, "http_tests": 9, "failures": 0, "skipped": 0}
+  ],
+  "released_upgraders_tested": ["1.0.0", "1.0.2", "1.1.0", "1.2.0", "1.2.1", "1.2.2", "1.3.0"],
+  "network_during_native_tests": "none",
+  "checks": {
+    "all_example_and_engine_variables_present": "passed",
+    "old_missing_variables_added_without_template_change": "passed",
+    "existing_scalar_array_and_associative_values_preserved": "passed",
+    "future_variables_and_arrays_added": "passed",
+    "dynamic_user_assignments_keep_precedence": "passed",
+    "idempotent_without_inode_or_mtime_change_when_complete": "passed",
+    "private_backup_and_last_good_cache_updated": "passed",
+    "cache_write_failure_restores_original": "passed",
+    "external_edits_not_overwritten_by_migration_or_rollback": "passed",
+    "up_to_date_upgrade_completes_config_and_repairs_example": "passed",
+    "real_130_upgrader_completes_monitor_local_and_block_local": "passed",
+    "real_131_cli_up_to_date_upgrade": "passed",
+    "local_postfix_guard_preserved_during_completion": "passed"
+  }
+}

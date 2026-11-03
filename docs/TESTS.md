@@ -4,6 +4,10 @@ Los directorios de pruebas y datos de validación se conservan **fuera del repos
 
 ## Pruebas locales
 
+Validación 1.3.1 (2026-11-03): **218 pruebas de integración verificadas + 11 de configuración + 9 HTTP por entorno** en Focal y Noble. Se ejecutó la suite completa de 217 pruebas y una regresión adicional del actualizador público 1.2.2; se repitió además la prueba con Postfix real usando el actualizador 1.3.0 y una segunda llamada a `--upgrade` sin versión nueva. Resultado: [TEST_RESULTS_1.3.1.json](TEST_RESULTS_1.3.1.json).
+
+El contrato de ampliación automática es público y se comprueba con `python3 tools/test_config_completion.py -v`: todas las variables del motor están en el ejemplo y en el archivo completado; se conservan valores y arrays; se añaden futuras variables; no hay duplicación ni reescritura innecesaria; se prueba caché, permisos, backup, concurrencia y rollback. Los escenarios de distribución verifican también el ejemplo instalado y una configuración privada parcial preexistente.
+
 Validación 1.3.0 (2026-11-03): **213 pruebas completas + 9 HTTP** en Focal y Noble, y **25 pruebas locales** en Jammy/Postfix 3.6.4. Resultado: [TEST_RESULTS_1.3.0.json](TEST_RESULTS_1.3.0.json). La nueva cobertura incluye UID/PID, dominios y foreign automáticos, cuota externa, ausencia de reset local, ACL hash sin reload por incidente, rollback, recuperación y operación real de sendmail/postdrop con UID 5009. La prueba nativa actualiza mediante el actualizador público 1.2.2 e inspecciona la identidad desde el CLI instalado.
 
 Las pruebas de ISPConfig simulan sus filas SQL, incluyendo alias, descendientes, auto-subdominios y pools independientes. No se dispone de ISPConfig de producción en el entorno de desarrollo. Para contrastar UID/login/home, esquema y dominios en un servidor real, véase la batería de [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md#comprobaciones-en-un-ispconfig-real).
@@ -93,7 +97,7 @@ docker run --rm --network none outbound-spam-tests:focal postconf -h mail_versio
 - Paquete reproducible, manifiesto/hashes, extracción sin rutas de escape/enlaces y ausencia de datos de pruebas.
 - Instalación nueva real, distribución versionada, configuración conservada y estado retenido en preparación real de upgrade.
 - Regresión con master completo (incluido discard) y agentes ISPConfig: comprobación de claves expuestas, nombres con guion y conservación de reglas MX/FILTER, MySQL, SASL y relay.
-- Configuración privada preservada en contenido, inode, mtime y permisos; variables nuevas solo notificadas y configuración desaparecida no regenerada durante upgrade.
+- Configuración privada conservada y, desde 1.3.1, completada automáticamente; contenido previo y valores preservados, inode/mtime estables cuando no falta ninguna variable, permisos privados y ausencia de regeneración de una configuración desaparecida.
 - Actualización mediante el código real del release público 1.0.0, ejecutada sin red con sus assets de prueba y el paquete nuevo.
 - Calentamiento solo informativo (probe real de Monit devuelve 0), sin esconder ataques ni errores.
 - Fechas locales CET/CEST y UTC, preservando los valores internos de máquina.

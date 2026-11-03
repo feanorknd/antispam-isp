@@ -38,7 +38,7 @@ install -m 0600 outbound-spam.conf.example /root/scripts/outbound-spam.conf.exam
 install -m 0600 outbound-spam.conf.example /root/scripts/outbound-spam.conf
 ```
 
-En una actualización, conservar `outbound-spam.conf`: reemplazar únicamente código y ejemplo. El instalador y `--upgrade` no cambian los valores existentes ni añaden variables al archivo privado; como máximo notifican nombres nuevos ausentes para revisión. El script carga el ejemplo como valores por defecto y después las asignaciones de la configuración privada.
+En una actualización, conservar `outbound-spam.conf`. Desde 1.3.1, el instalador y `--upgrade` completan automáticamente todas las variables que falten respecto al ejemplo, preservando las asignaciones y valores existentes. Se guarda un respaldo privado y se valida la equivalencia antes de escribir. El ejemplo instalado se sincroniza con la distribución. Véase [UPGRADE.md](UPGRADE.md#configuración-completa-automáticamente-desde-131).
 
 Editar `/root/scripts/outbound-spam.conf`, especialmente:
 

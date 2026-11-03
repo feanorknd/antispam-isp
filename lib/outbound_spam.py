@@ -30,7 +30,7 @@ from postfix_settings import restart_postfix, MonitorError, LocalGuard, Websites
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
 TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|pickup|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
@@ -2307,18 +2307,25 @@ def _main(parser, args):
                     recovery.backup(store, force=True)
                 if config_warning:
                     raise MonitorError(config_warning + "; corrija la configuración antes de actualizar")
-                runtime.migrate_http_config(args.config_path, code_base, parse_profile, atomic_write)
-                if config["monitor_local"] and config["block_local"]:
-                    LocalGuard(config, commands, atomic_write).install(local_block_users(store, validate=True))
-                    store.set("local_guard_installed", True)
-                    store.persist_critical()
-                if config["monitor_local"] and not store.get("local_monitor_started"):
-                    store.set("local_monitor_started", time.time())
-                    store.set("warm_until", max(store.get("warm_until", 0), time.time() + config.max_period))
-                    store.persist_critical()
-                from distribution import legacy_prepare
-                legacy_prepare(code_base, args.config_path)
-                print(json.dumps({"version": VERSION, "schema_version": store.db.execute("PRAGMA user_version").fetchone()[0], "prepared": True}))
+                original_config = runtime.stable_bytes(args.config_path)
+                try:
+                    completion = runtime.migrate_config(args.config_path, code_base, parse_profile, atomic_write)
+                    if config["monitor_local"] and config["block_local"]:
+                        LocalGuard(config, commands, atomic_write).install(local_block_users(store, validate=True))
+                        store.set("local_guard_installed", True)
+                        store.persist_critical()
+                    if config["monitor_local"] and not store.get("local_monitor_started"):
+                        store.set("local_monitor_started", time.time())
+                        store.set("warm_until", max(store.get("warm_until", 0), time.time() + config.max_period))
+                        store.persist_critical()
+                    from distribution import legacy_prepare
+                    legacy_prepare(code_base, args.config_path)
+                except Exception:
+                    runtime.rollback_config_completion(args.config_path, original_config, code_base, parse_profile, atomic_write)
+                    raise
+                print(json.dumps({"version": VERSION, "schema_version": store.db.execute("PRAGMA user_version").fetchone()[0],
+                                  "prepared": True, "config_variables_added": completion["added"],
+                                  "config_completion_backup": completion["backup"]}))
                 return 0
             if recovery is not None:
                 repair_guard(store, config, commands, recovery)

@@ -4,7 +4,7 @@
 
 | Elemento | Versión |
 |---|---|
-| Aplicación | 1.3.0 |
+| Aplicación | 1.3.1 |
 | Esquema SQLite privado (`user_version`) | 4 |
 | Python mínimo | 3.8 |
 | Bash utilizado | 5.0 o posterior en las distribuciones verificadas |
@@ -12,7 +12,13 @@
 
 `VERSION` y `--version` deben coincidir; las pruebas lo comprueban. Las futuras modificaciones incompatibles del esquema deberán introducir una migración y actualizar este documento.
 
-## Matriz de la distribución 1.3.0
+## Matriz de la distribución 1.3.1
+
+Focal/Python 3.8/Postfix 3.4 y Noble/Python 3.12/Postfix 3.8: 218 pruebas de integración verificadas por entorno, 11 del contrato de configuración y 9 HTTP. La validación incluye suite completa de 217 pruebas, otra regresión de upgrade desde 1.2.2 y repetición de la prueba local con el actualizador 1.3.0 y `--upgrade` sin release nuevo.
+
+Conserva esquema 4, `upgrade_api=1` y `service_unit_api=1`. Los nombres de componentes siguen siendo compatibles con los actualizadores históricos. El candidato completa el archivo privado incluso si la actualización la inicia 1.3.0. Los upgrades posteriores, también sin cambio de versión, mantienen `.conf` y `.conf.example` completos. Resultado: [TEST_RESULTS_1.3.1.json](TEST_RESULTS_1.3.1.json).
+
+## Matriz histórica de la distribución 1.3.0
 
 | Imagen | Python | Postfix | Resultado |
 |---|---:|---:|---|

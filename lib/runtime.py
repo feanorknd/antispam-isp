@@ -9,6 +9,7 @@ import math
 import os
 from pathlib import Path
 import re
+import secrets
 import signal
 import stat
 import subprocess
@@ -199,6 +200,97 @@ def migrate_http_config(path, base, parse, write_atomic):
         raise ValueError("La configuración cambió durante la migración HTTP")
     write_atomic(path, updated.decode("utf-8"))
     return additions
+
+
+CONFIG_BEGIN = "# BEGIN OUTBOUND-SPAM CONFIG COMPLETION"
+CONFIG_END = "# END OUTBOUND-SPAM CONFIG COMPLETION"
+
+
+def assigned_names(text):
+    """Nombres explícitos; las ampliaciones se anteponen para respetar también Bash dinámico."""
+    return set(re.findall(r"(?m)^\s*(?:(?:declare\s+(?:-[A-Za-z]+|--)|export|readonly)\s+)?"
+                          r"([A-Za-z_][A-Za-z0-9_]*)\s*\+?=", text))
+
+
+def example_declarations(base):
+    """El ejemplo versionado es el inventario autoritativo, incluidos arrays Bash."""
+    example = Path(base) / "outbound-spam.conf.example"
+    names = sorted(assigned_names(example.read_text(encoding="utf-8")))
+    if not names:
+        raise ValueError("El ejemplo de configuración no contiene variables")
+    script = 'set -euo pipefail; source "$1" >/dev/null; shift; for name; do declare -p "$name"; done'
+    result = subprocess.run(["/bin/bash", "-c", script, "outbound-spam", str(example)] + names,
+                            capture_output=True, text=True, timeout=15)
+    if result.returncode:
+        raise ValueError("No se pueden obtener los valores predeterminados del ejemplo")
+    declarations = {}
+    for line in result.stdout.splitlines():
+        match = re.fullmatch(r"declare (?:--|-[A-Za-z]+) ([A-Za-z_][A-Za-z0-9_]*)=.*", line)
+        if not match or match[1] in declarations:
+            raise ValueError("Declaración del ejemplo no representable en una línea Bash")
+        declarations[match[1]] = line[len("declare -- "):] if line.startswith("declare -- ") else line
+    if set(declarations) != set(names):
+        raise ValueError("Inventario de variables del ejemplo incompleto")
+    return declarations
+
+
+def completed_config_matches(original, current):
+    """Reconocer nuestra ampliación exacta sin deshacer ediciones externas."""
+    pattern = (re.escape((CONFIG_BEGIN + "\n# sha256: ").encode()) + rb"([a-f0-9]{64})\n(.*?)" +
+               re.escape((CONFIG_END + "\n\n").encode()))
+    match = re.match(pattern, current, re.S)
+    return bool(match and hashlib.sha256(match[2]).hexdigest().encode() == match[1]
+                and current[match.end():] == original)
+
+
+def migrate_config(path, base, parse, write_atomic):
+    """Completar todas las variables ausentes conservando contenido y valores efectivos."""
+    path, base = Path(path).absolute(), Path(base)
+    original = stable_bytes(path)
+    config, _ = validate_config(original, base, parse)
+    declarations = example_declarations(base)
+    added = sorted(set(declarations) - assigned_names(original.decode("utf-8")))
+    if not added:
+        return {"added": [], "backup": None}
+    body = ("\n".join(declarations[name] for name in added) + "\n").encode("utf-8")
+    prefix = ((CONFIG_BEGIN + "\n# sha256: " + hashlib.sha256(body).hexdigest() + "\n").encode() +
+              body + (CONFIG_END + "\n\n").encode())
+    # Anteponer es importante: asignaciones dinámicas, += y bloques del usuario
+    # siguen teniendo la última palabra, como al cargar el ejemplo antes del .conf.
+    updated = prefix + original
+    candidate, serialized = validate_config(updated, base, parse)
+    if candidate.v != config.v or set(declarations) - assigned_names(updated.decode("utf-8")):
+        raise ValueError("La ampliación de configuración cambia valores existentes o deja variables ausentes")
+    cache = config_cache(path)
+    if cache.exists() or cache.is_symlink():
+        check_private(cache)
+    old_cache = cache.read_text() if cache.exists() else None
+    backup = private_data() / ("config-completion-backup-%d-%s.json" % (time.time_ns(), secrets.token_hex(4)))
+    write_atomic(backup, json.dumps({"config_path": str(path), "config": original.decode("utf-8"),
+                                    "cache": old_cache, "added": added}, ensure_ascii=False))
+    if stable_bytes(path) != original:
+        raise ValueError("La configuración cambió durante su ampliación automática")
+    try:
+        write_atomic(path, updated.decode("utf-8"))
+        write_atomic(cache, json.dumps(config_record(path, updated, serialized)))
+    except Exception:
+        if path.is_file() and completed_config_matches(original, path.read_bytes()):
+            write_atomic(path, original.decode("utf-8"))
+            if old_cache is not None:
+                write_atomic(cache, old_cache)
+            elif cache.exists():
+                cache.unlink()
+        raise
+    audit("configuracion_completada", config=str(path), variables=added, respaldo=str(backup))
+    return {"added": added, "backup": str(backup)}
+
+
+def rollback_config_completion(path, original, base, parse, write_atomic):
+    path = Path(path)
+    if path.is_file() and not path.is_symlink() and completed_config_matches(original, path.read_bytes()):
+        _, serialized = validate_config(original, base, parse)
+        write_atomic(path, original.decode("utf-8"))
+        write_atomic(config_cache(path), json.dumps(config_record(path, original, serialized)))
 
 
 def config_record(path, content, serialized):

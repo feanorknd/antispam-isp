@@ -2,16 +2,16 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-## Instalación nueva desde el release 1.3.0
+## Instalación nueva desde el release 1.3.1
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.0/outbound-spam-1.3.0.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.0/SHA256SUMS
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.1/outbound-spam-1.3.1.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.1/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf outbound-spam-1.3.0.tar.gz
-sudo ./outbound-spam-1.3.0/install.sh --install-deps
+tar -xzf outbound-spam-1.3.1.tar.gz
+sudo ./outbound-spam-1.3.1/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
@@ -39,7 +39,7 @@ El paquete incluye el instalador, los dos scripts, todos los módulos Python/Bas
 sudo /root/scripts/outbound-spam.sh --upgrade
 ```
 
-El comando consulta `/releases/latest` de la API pública de GitHub. Solo acepta releases estables con versión `X.Y.Z` o `vX.Y.Z`; no requiere token de GitHub. Si no hay una versión superior, lo indica y termina sin desplegar archivos.
+El comando consulta `/releases/latest` de la API pública de GitHub. Solo acepta releases estables con versión `X.Y.Z` o `vX.Y.Z`; no requiere token de GitHub. Desde 1.3.1, si no hay una versión superior también completa las variables ausentes del archivo privado y sincroniza su `.conf.example`, sin detener ni reiniciar servicios.
 
 Cuando hay una versión más moderna:
 
@@ -47,7 +47,7 @@ Cuando hay una versión más moderna:
 2. Verifica el SHA-256 antes de extraer y valida rutas, tipos de archivos y hashes internos. No extrae enlaces ni rutas que puedan salir del directorio de preparación.
 3. Detiene la unidad propia si estaba activa, antes de tomar el bloqueo de operaciones. Un demonio manual activo debe detenerse expresamente.
 4. Espera las operaciones manuales y guarda una copia privada del estado y del código anterior.
-5. Ejecuta la preparación/migración con el código candidato. En 1.3.0 instala la ACL local, conserva los bloqueos conocidos y valida/recarga Postfix. No evalúa nuevos excesos ni ejecuta acciones de contraseña, aviso o cola durante esta preparación.
+5. Ejecuta la preparación/migración con el código candidato. Desde 1.3.1 completa todas las variables del `.conf` antes de activar el código. Instala la ACL local y valida/recarga Postfix si aún no estaba instalada. No evalúa nuevos excesos ni ejecuta acciones de contraseña, aviso o cola durante esta preparación.
 6. Activa la versión completa mediante un cambio atómico de `current` y actualiza los puntos de entrada propios.
 7. Vuelve a iniciar el servicio únicamente si estaba activo.
 
@@ -55,11 +55,21 @@ Al preparar 1.2.2 se añaden al final de la configuración `status_http_host=127
 
 Desde el actualizador 1.0.2 se revisa también la definición systemd existente. Una unidad propia intacta se actualiza con la plantilla del candidato si declara `service_unit_api=1`; se guarda su copia y se ejecuta `daemon-reload`. Se preservan `ExecStart` (incluidos config/ruta de estado), el estado parado/activo y los archivos `.service.d/`. Una unidad base personalizada se conserva y se informa de ello. Si falla `daemon-reload` antes del arranque nuevo se restaura la definición anterior junto con código/estado.
 
+### Configuración completa automáticamente desde 1.3.1
+
+El `.conf.example` versionado es el inventario de variables que debe contener el `.conf`. Cada upgrade añade **todas** las ausentes, aunque ya estuvieran en el ejemplo de la versión anterior. Este contrato se aplica también a futuras variables y a instalaciones sobre una configuración privada preexistente.
+
+La ampliación se antepone en un bloque `OUTBOUND-SPAM CONFIG COMPLETION`, con valores predeterminados del candidato y tipos Bash correctos para arrays indexados/asociativos. El contenido previo se conserva después del bloque, para que las asignaciones del usuario sigan prevaleciendo. Se valida sintaxis, configuración completa y equivalencia de valores efectivos antes de escribir. Si todo estaba completo no se reescribe el archivo.
+
+Se guarda respaldo privado `config-completion-backup-*.json` en `/var/lib/outbound-spam/` y se actualiza la última configuración válida. Los errores de escritura restauran archivo y caché cuando siguen intactos. El actualizador nuevo reconoce su bloque y puede retirarlo en un rollback previo al arranque, sin deshacer ediciones externas. Si el actualizador anterior falla después de una preparación ya completada, puede conservar las variables añadidas; sus valores previos siguen prevaleciendo y el respaldo permite revisar la ampliación.
+
+El resultado del actualizador nuevo incluye `config_variables_added` y deja `missing_new_variables=[]`. El primer salto desde 1.3.0 utiliza todavía su actualizador, que puede mostrar los campos antiguos; el candidato 1.3.1 completa igualmente el archivo. Las repeticiones desde 1.3.1 son idempotentes y también reparan un ejemplo de instalación incompleto usando la copia versionada.
+
 ### Protección de webs PHP/sendmail en 1.3.0
 
 El upgrade normal instala automáticamente `!hash:/etc/postfix/outbound-spam-submit-blocked` al principio de `authorized_submit_users`, conservando su política anterior. Ejecuta `postfix check` y un `reload` de esa instancia; los incidentes posteriores solo actualizan el mapa, sin reload. El proceso es idempotente y se aplica también cuando quien ejecuta la actualización es el código público 1.2.2.
 
-Los valores por defecto nuevos son `monitor_local=true` y `block_local=true`. Se adoptan desde el ejemplo actualizado sin necesidad de añadirlos al archivo privado; una asignación explícita prevalece. Si ambos están activos, la preparación instala el bloqueo local. Los límites generales y las acciones `notify`/`hold_queue` existentes se reutilizan. El bloqueo local es independiente de `block_smtp`; `reset_password` solo afecta a identidades SASL.
+Los valores por defecto son `monitor_local=true` y `block_local=true`. Desde 1.3.1 se escriben en el archivo privado si faltan; una asignación existente prevalece. Si ambos están activos, la preparación instala el bloqueo local. Los límites generales y las acciones `notify`/`hold_queue` existentes se reutilizan. El bloqueo local es independiente de `block_smtp`; `reset_password` solo afecta a identidades SASL.
 
 El esquema privado se migra de 3 a 4. El primer upgrade marca calentamiento para la nueva cobertura local. Antes de considerar completa esa ventana deben haberse leído los nuevos pickup; no se atribuyen sobres históricos sin prueba de UID.
 
@@ -77,13 +87,13 @@ Se utiliza el `--upgrade` habitual, conservando configuración y estado. Los com
 
 ### Migración desde 1.0.x a 1.1.0 o posterior
 
-El primer upgrade utiliza todavía el actualizador instalado. Por ello el paquete de 1.3.0 incluye también `antispam-isp-1.3.0.tar.gz`, un paquete de compatibilidad con el mismo código y manifiesto que el principal. El repositorio de GitHub conserva su URL histórica; el nombre operativo del programa y del paquete principal es **outbound-spam**.
+El primer upgrade utiliza todavía el actualizador instalado. Por ello el paquete de 1.3.1 incluye también `antispam-isp-1.3.1.tar.gz`, un paquete de compatibilidad con el mismo código y manifiesto que el principal. El repositorio de GitHub conserva su URL histórica; el nombre operativo del programa y del paquete principal es **outbound-spam**.
 
 La preparación de 1.1.0 traslada el almacenamiento de `/root/scripts/.antispam/` a `/var/lib/outbound-spam/`. Durante el cierre del actualizador antiguo se mantiene un alias transitorio; un finalizador privado espera su bloqueo y la limpieza de la descarga, y retira ese alias y la caché antigua automáticamente. Se registra `migracion_completada` en el log. El código nuevo y el servicio ya utilizan la ubicación nueva, incluso durante ese cierre. El traslado también contempla sistemas de archivos distintos para `/root` y `/var`.
 
 El instalador de 1.1.0 realiza la misma migración de forma síncrona cuando se ejecuta sobre una instalación anterior. Si falla antes de arrancar el nuevo servicio, restaura las rutas anteriores junto con el estado y los puntos de entrada.
 
-La configuración operativa se conserva, salvo las variables HTTP que faltan al migrar a 1.2.2. Si el ejemplo nuevo incorpora otros nombres ausentes tanto en el ejemplo anterior como en la configuración privada, se notifican en `missing_new_variables` para revisión; esta detección de asignaciones Bash es orientativa.
+La configuración operativa conserva sus asignaciones y valores. Desde 1.3.1, las variables ausentes se incorporan automáticamente como se describe arriba. El ejemplo se actualiza con el de la distribución y ambos archivos contienen el inventario completo de variables requeridas.
 
 Una actualización no regenera una configuración desaparecida: se cancela antes de cambiar el programa. En una instalación nueva solo se crea la configuración si no existía. También se conservan el estado, reservas de avisos, retenciones, bloqueos y decisiones de relay. En 1.3.0 se amplía la configuración de Postfix con la ACL local descrita arriba. Se actualiza el ejemplo y, si existe, el comprobador Monit gestionado.
 
@@ -94,8 +104,8 @@ Una actualización no regenera una configuración desaparecida: se cancela antes
 /root/scripts/outbound-spam.conf
 /root/scripts/outbound-spam-status.sh
 /root/scripts/outbound-spam.conf.example
-/var/lib/outbound-spam/current -> releases/1.3.0
-/var/lib/outbound-spam/releases/1.3.0/
+/var/lib/outbound-spam/current -> releases/1.3.1
+/var/lib/outbound-spam/releases/1.3.1/
 /var/lib/outbound-spam/installation.json
 /var/lib/outbound-spam/upgrade.lock
 /var/lib/outbound-spam/upgrade-backup-*/

@@ -1,5 +1,14 @@
 # Cambios efectuados
 
+## 1.3.1 — 2026-11-03
+
+- Contrato permanente de configuración completa: cada upgrade incorpora todas las variables ausentes del `.conf`, usando el `.conf.example` del candidato como inventario, incluidas variables antiguas y arrays.
+- Bloque inicial de valores predeterminados que conserva el contenido previo y su prioridad; validación de equivalencia, respaldo privado, escritura atómica y actualización de caché.
+- `--upgrade` sin versión nueva también completa la configuración y sincroniza el ejemplo, sin reiniciar servicios; operación idempotente.
+- Rollback de la ampliación propia sin deshacer ediciones externas y cobertura de fallos de caché, concurrencia y futuras variables.
+- Actualizadores públicos hasta 1.3.0 probados; se reproduce la ausencia de `monitor_local`/`block_local` y su incorporación automática con Postfix real.
+- Pruebas públicas del contrato en `tools/test_config_completion.py`. Se mantiene esquema SQLite 4 y API de upgrade 1.
+
 ## 1.3.0 — 2026-11-03
 
 - Atribución de correo local desde pickup por UID, independiente de los PID de PHP-FPM, con identidades `local:UID` y cuotas de destinatarios externos.

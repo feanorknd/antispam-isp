@@ -90,7 +90,7 @@ systemctl is-active outbound-spam.service
 /root/scripts/outbound-spam.sh --status
 ```
 
-Esperado: versión 1.3.0; la exclusión hash precede a la política antigua; UID, usuario y home coinciden; el dominio de la web y sus alias figuran en `domains`; los dos inspectores de identidad coinciden. Para el remitente propio, `foreign=false`; para el ajeno, `foreign=true`. `domains=null` significa que el usuario no se ha asociado a una web en el servidor configurado; revisar `ispconfig_database` y `ispconfig_server_id`. Estas consultas no requieren que siga vivo ningún PID PHP concreto. Un mapa vacío es normal si no hay webs bloqueadas.
+Esperado: versión 1.3.0 o posterior; la exclusión hash precede a la política antigua; UID, usuario y home coinciden; el dominio de la web y sus alias figuran en `domains`; los dos inspectores de identidad coinciden. Para el remitente propio, `foreign=false`; para el ajeno, `foreign=true`. `domains=null` significa que el usuario no se ha asociado a una web en el servidor configurado; revisar `ispconfig_database` y `ispconfig_server_id`. Estas consultas no requieren que siga vivo ningún PID PHP concreto. Un mapa vacío es normal si no hay webs bloqueadas.
 
 También se puede revisar directamente el inventario SQL, adaptando la base y el servidor configurados:
 

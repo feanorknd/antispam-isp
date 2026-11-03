@@ -2,6 +2,8 @@
 
 El archivo operativo es Bash, por defecto `/root/scripts/outbound-spam.conf`. Puede elegirse otro con `--config /ruta/privada.conf`. El ejemplo contiene todas las variables y se carga antes del archivo operativo.
 
+Desde 1.3.1, **cada `--upgrade` garantiza que el archivo privado contenga todas las variables del ejemplo**: añade las ausentes en un bloque inicial, conservando las asignaciones del usuario después para que sigan prevaleciendo. Cubre escalares y arrays; no duplica variables en sucesivas ejecuciones. Si la versión ya está actualizada también completa el archivo y sincroniza el ejemplo, sin reiniciar servicios. Se guardan respaldo privado y caché validada. Detalles en [UPGRADE.md](UPGRADE.md#configuración-completa-automáticamente-desde-131).
+
 ## Umbrales y excepciones
 
 ```bash

@@ -1,6 +1,6 @@
 # Tareas y programación
 
-Actualizado: **2026-11-03**, versión 1.3.0.
+Actualizado: **2026-11-03**, versión 1.3.1.
 
 ## Completadas
 
@@ -81,10 +81,14 @@ Actualizado: **2026-11-03**, versión 1.3.0.
 - [x] Conservar identidad UNIX y generaciones de cola en recuperación; añadir inspector y comandos de comprobación real.
 - [x] Validar 213 pruebas completas + 9 HTTP en Focal/Noble y 25 de protección local en Jammy, con sendmail/postdrop real y actualizador público 1.2.2.
 - [x] Publicar 1.3.0 y verificar sin autenticación API latest, ambos paquetes, checksums, manifiestos idénticos y descubrimiento desde los actualizadores públicos 1.0.2/1.1.0/1.2.1/1.2.2. Reconstrucción reproducible confirmada.
+- [x] Completar todas las variables ausentes del .conf en cada upgrade, con inventario del ejemplo versionado, tipos Bash y prioridad de valores existentes.
+- [x] Completar también con versión ya actualizada y sincronizar el ejemplo sin reiniciar servicios.
+- [x] Añadir pruebas públicas de idempotencia, futuros campos, arrays, conservación, caché, permisos, concurrencia y rollback.
+- [x] Verificar integración en Focal/Noble, upgrades históricos y el caso real de 1.3.0 con ambas variables locales ausentes.
 
 ## En ejecución
 
-Ninguna tarea de publicación pendiente. Release estable verificado: https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.0 . Notas: [RELEASE_1.3.0.md](RELEASE_1.3.0.md). Queda la validación de la base ISPConfig de producción con la batería indicada abajo.
+Publicación y verificación pública de 1.3.1 en curso. Notas: [RELEASE_1.3.1.md](RELEASE_1.3.1.md). La batería de validación ISPConfig sigue en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
 ## Programadas por el software, al instalarlo en el servidor
 
