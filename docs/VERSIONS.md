@@ -4,7 +4,7 @@
 
 | Elemento | Versión |
 |---|---|
-| Aplicación | 1.3.2 |
+| Aplicación | 1.3.3 |
 | Esquema SQLite privado (`user_version`) | 4 |
 | Python mínimo | 3.8 |
 | Bash utilizado | 5.0 o posterior en las distribuciones verificadas |
@@ -12,7 +12,13 @@
 
 `VERSION` y `--version` deben coincidir; las pruebas lo comprueban. Las futuras modificaciones incompatibles del esquema deberán introducir una migración y actualizar este documento.
 
-## Matriz de la distribución 1.3.2
+## Distribución 1.3.3
+
+Añade dominios registrables mediante una Public Suffix List incluida (ICANN y PRIVATE), sin dependencias pip ni acceso a red durante el análisis. Mantiene Python 3.8+, esquema SQLite 4, `upgrade_api=1` y `service_unit_api=1`. La lista se distribuye como documentación JSON, compatible con las listas de componentes admitidos por los actualizadores históricos.
+
+Focal/Python 3.8/Postfix 3.4 y Noble/Python 3.12/Postfix 3.8: 221 pruebas de integración, 18 de dominios/PSL, 11 de configuración y 9 HTTP correctas por entorno. Incluye upgrade desde 1.3.2 e inspector y sendmail real con remitente del dominio registrable. Resultados: [TEST_RESULTS_1.3.3.json](TEST_RESULTS_1.3.3.json).
+
+## Matriz histórica de la distribución 1.3.2
 
 Focal/Python 3.8/Postfix 3.4 y Noble/Python 3.12/Postfix 3.8: 219 pruebas completas de integración, 10 de dominios nullable, 11 del contrato de configuración y 9 HTTP correctas por entorno. Incluye el actualizador público 1.3.1 y doctor/inspector tras actualizar con un alias `system_user=NULL`.
 

@@ -1,10 +1,10 @@
 # Outbound Spam Monitor
 
-Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión **1.3.2**.
+Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión **1.3.3**.
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
 
-Para webs, atribuye `pickup uid=...` al usuario UNIX y obtiene automáticamente sus dominios de ISPConfig, incluidos alias/subdominios asociados. El bloqueo local usa un mapa hash de `authorized_submit_users`: no necesita reload por incidente y nunca cambia contraseñas de buzones por un envío PHP. Véase [protección PHP/sendmail y comprobaciones reales](docs/LOCAL_SUBMISSION.md).
+Para webs, atribuye `pickup uid=...` al usuario UNIX y obtiene automáticamente sus dominios de ISPConfig, incluidos alias/subdominios asociados y sus dominios registrables (Public Suffix List incluida, con `com.es`, `co.uk` y otros sufijos). Por ejemplo, `app.gremisat.com` permite enviar desde `@gremisat.com` sin marcar foreign. El bloqueo local usa un mapa hash de `authorized_submit_users`: no necesita reload por incidente y nunca cambia contraseñas de buzones por un envío PHP. Véase [protección PHP/sendmail y comprobaciones reales](docs/LOCAL_SUBMISSION.md).
 
 ## Archivos principales
 

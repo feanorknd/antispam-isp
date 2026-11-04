@@ -1,5 +1,12 @@
 # Cambios efectuados
 
+## 1.3.3 — 2026-11-04
+
+- Los dominios de webs PHP/sendmail incluyen su dominio registrable: `app.gremisat.com` y `repostajes.gremisat.com` añaden `gremisat.com` una sola vez, y los remitentes `@gremisat.com` dejan de ser foreign.
+- Public Suffix List incluida, con ICANN/PRIVATE, sufijos compuestos (`com.es`, `co.uk`), comodines, excepciones e IDNA; sin consultas de red ni dependencias pip en ejecución.
+- Se conservan los dominios originales y sus auto-subdominios; el padre añadido no habilita comodines ni otros clientes de plataformas compartidas.
+- Regresiones públicas y de cuota local, e inspector/envío sendmail real tras upgrade desde 1.3.2. Se conserva esquema SQLite 4 y API de upgrade/systemd 1.
+
 ## 1.3.2 — 2026-11-03
 
 - Corregida la lectura de `HEX(system_user)=NULL` en alias ISPConfig sin usuario propio; ahora heredan la asociación del registro padre.

@@ -4,6 +4,10 @@ Los directorios de pruebas y datos de validación se conservan **fuera del repos
 
 ## Pruebas locales
 
+Validación 1.3.3 (2026-11-04): **221 pruebas de integración + 18 de dominios/PSL + 11 de configuración + 9 HTTP por entorno** en Focal/Python 3.8 y Noble/Python 3.12, sin errores ni omisiones. Incluye upgrade desde el release público 1.3.2, doctor e inspector con padres registrables, envío real de sendmail desde ese padre, cuotas y contención con Postfix real. Resultados: [TEST_RESULTS_1.3.3.json](TEST_RESULTS_1.3.3.json).
+
+Las regresiones públicas de dominios incluyen dos subdominios con un único padre, sufijos compuestos `com.es`/`co.uk`, coincidencia PSL más larga, comodines/excepciones, sufijos privados e IDNA. La lista PSL se distribuye en el paquete y las pruebas de ejecución se realizan sin red.
+
 Validación 1.3.2 (2026-11-03): **219 pruebas completas de integración + 10 de dominios nullable + 11 de configuración + 9 HTTP por entorno** en Focal y Noble, sin errores ni omisiones. El escenario nativo utiliza el actualizador público 1.3.1, comprueba doctor e inspector sobre un alias con usuario SQL NULL y verifica después cuotas y contención con Postfix real. Resultado: [TEST_RESULTS_1.3.2.json](TEST_RESULTS_1.3.2.json).
 
 Pruebas públicas: `python3 tools/test_websites.py -v`. Reproducen los pares alias/padre 33→32, 44→5 y 20→6 con dominios anonimizados y usuarios no derivados de los IDs. Cubren NULL frente a usuario vacío/literal, herencia encadenada, pools independientes, foreign, errores de campo/identificador/IDNA y reintentos de lectura. Se ejecutó además la consulta real en MariaDB 10.11.19 con una tabla nullable equivalente al esquema reportado; los alias se asociaron correctamente a sus usuarios padre.

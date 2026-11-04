@@ -1,4 +1,6 @@
 """Edición administrativa de límites. Sin dependencias externas de Python."""
+import functools
+import ipaddress
 import json
 import math
 import os
@@ -42,6 +44,56 @@ def unix_identity(uid):
 def domain_belongs(domain, domains):
     return bool(domain and domains is not None and (domain in domains or any(
         d.startswith("*.") and domain.endswith(d[1:]) for d in domains)))
+
+
+@functools.lru_cache(maxsize=1)
+def public_suffix_rules():
+    """PSL ICANN y PRIVATE local, fijada por el release y sin acceso a red."""
+    try:
+        rules = json.loads((Path(__file__).resolve().parent.parent / "docs/PUBLIC_SUFFIX_LIST.json").read_text(encoding="utf-8"))["rules"]
+        exact, wildcard, exceptions = set(), set(), set()
+        for rule in rules:
+            if rule.startswith("!"):
+                exceptions.add(rule[1:])
+            elif rule.startswith("*."):
+                wildcard.add(rule[2:])
+            else:
+                exact.add(rule)
+        if not {"com", "com.es", "co.uk", "github.io"} <= exact or not wildcard or not exceptions:
+            raise ValueError("PSL incompleta")
+        return frozenset(exact), frozenset(wildcard), frozenset(exceptions)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise MonitorError("No se puede cargar la Public Suffix List del release: " + str(exc)) from None
+
+
+def registrable_domain(domain):
+    """eTLD+1 según PSL: coincidencia más larga, comodines y excepciones."""
+    try:
+        domain = domain.rstrip(".").encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return None
+    if domain.startswith("*."):
+        domain = domain[2:]
+    labels = domain.split(".")
+    if len(domain) > 253 or not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label) for label in labels):
+        return None
+    try:
+        ipaddress.ip_address(domain)
+        return None
+    except ValueError:
+        pass
+    exact, wildcard, exceptions = public_suffix_rules()
+    suffix_length = 1  # Regla implícita * de la PSL para sufijos desconocidos.
+    for index in range(len(labels)):
+        suffix = ".".join(labels[index:])
+        if suffix in exceptions:
+            suffix_length = len(labels) - index - 1
+            break
+        if suffix in exact:
+            suffix_length = max(suffix_length, len(labels) - index)
+        if index > 0 and suffix in wildcard:
+            suffix_length = max(suffix_length, len(labels) - index + 1)
+    return ".".join(labels[-suffix_length - 1:]) if len(labels) > suffix_length else None
 
 
 class Websites:
@@ -100,6 +152,8 @@ class Websites:
                 break
             selected |= children
         domains = {rows[i]["domain"] for i in selected if rows[i]["domain"]}
+        # Varios subdominios de la misma web comparten un único eTLD+1.
+        domains |= {parent for parent in (registrable_domain(domain) for domain in domains) if parent}
         for i in selected:
             if rows[i]["subdomain"] in ("www", "*"):
                 domains.add(("www." if rows[i]["subdomain"] == "www" else "*.") + rows[i]["domain"])

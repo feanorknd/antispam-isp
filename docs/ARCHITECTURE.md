@@ -22,7 +22,7 @@ mail.log incremental ──→ cuenta SASL o pickup UID + generación de ID de c
 
 Para SMTP, una línea `ID: client=..., sasl_username=...` con un ID válido crea la atribución. Los errores de autenticación se ignoran. El bootstrap SMTP utiliza el atributo SASL del sobre, no una cabecera aportada por el cliente. Desde 1.3.0, `pickup ID: uid=N from=<...>` crea una identidad `local:N`, resuelta a usuario/home UNIX y dominios web de ISPConfig. El espacio `local:UID` está reservado: no se acepta como identidad SASL.
 
-La comparación foreign local utiliza los dominios de la web, alias y subdominios asociados en `web_domain`, no todos los dominios de correo del servidor. La clasificación de los destinatarios sigue utilizando las rutas de Postfix. Detalles de las asociaciones y exclusiones en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
+La comparación foreign local utiliza los dominios de la web, alias y subdominios asociados en `web_domain`, ampliados con su dominio registrable según la Public Suffix List incluida (ICANN y PRIVATE). La clasificación de los destinatarios sigue utilizando las rutas de Postfix. Detalles de las asociaciones y exclusiones en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
 La primera línea `qmgr` con `nrcpt` confirma la aceptación y fija el instante de la ventana. Para un mensaje HOLD, que no pasa por `qmgr`, se puede completar la aceptación desde el fichero de cola finalizado. Los rechazos de cleanup/milter cierran transacciones no aceptadas.
 

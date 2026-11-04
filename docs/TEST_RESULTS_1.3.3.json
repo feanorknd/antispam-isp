@@ -1,0 +1,35 @@
+{
+  "version": "1.3.3",
+  "date": "2026-11-04",
+  "environments": [
+    {"image": "ubuntu:focal", "python": "3.8.10", "postfix": "3.4.13", "integration_tests": 221, "website_tests": 18, "config_completion_tests": 11, "http_tests": 9, "failures": 0, "skipped": 0},
+    {"image": "ubuntu:noble", "python": "3.12.3", "postfix": "3.8.6", "integration_tests": 221, "website_tests": 18, "config_completion_tests": 11, "http_tests": 9, "failures": 0, "skipped": 0}
+  ],
+  "public_suffix_list": {
+    "source": "https://publicsuffix.org/list/public_suffix_list.dat",
+    "version": "2026-10-31_14-17-28_UTC",
+    "commit": "73f8cc701c084fe07d888ec552b2f0b53281a674",
+    "rules": 10396,
+    "sections": ["ICANN", "PRIVATE"],
+    "runtime_network_required": false
+  },
+  "released_upgraders_tested": ["1.0.0", "1.0.2", "1.1.0", "1.2.0", "1.2.1", "1.2.2", "1.3.0", "1.3.1", "1.3.2"],
+  "network_during_native_tests": "none",
+  "checks": {
+    "two_subdomains_share_one_registrable_parent": "passed",
+    "com_es_and_co_uk_preserved": "passed",
+    "psl_longest_match_wildcards_and_exceptions": "passed",
+    "private_suffix_customer_isolation": "passed",
+    "idna_case_and_trailing_dot": "passed",
+    "no_implicit_sibling_wildcard_or_parent_auto_subdomains": "passed",
+    "original_domains_and_aliases_preserved": "passed",
+    "registrable_sender_keeps_full_local_quota": "passed",
+    "other_customer_and_public_suffix_remain_foreign": "passed",
+    "real_132_upgrader_then_doctor_and_inspector": "passed",
+    "real_postfix_sendmail_registrable_sender_quota_and_actions": "passed",
+    "candidate_packages_with_102_130_131_132_upgraders": "passed",
+    "complete_configuration_contract_retained": "passed",
+    "reproducible_archive": "passed",
+    "bash_syntax_and_shellcheck": "passed"
+  }
+}

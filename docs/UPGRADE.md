@@ -2,16 +2,16 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-## Instalación nueva desde el release 1.3.2
+## Instalación nueva desde el release 1.3.3
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.2/outbound-spam-1.3.2.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.2/SHA256SUMS
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.3/outbound-spam-1.3.3.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.3/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf outbound-spam-1.3.2.tar.gz
-sudo ./outbound-spam-1.3.2/install.sh --install-deps
+tar -xzf outbound-spam-1.3.3.tar.gz
+sudo ./outbound-spam-1.3.3/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
@@ -55,6 +55,12 @@ Al preparar 1.2.2 se añaden al final de la configuración `status_http_host=127
 
 Desde el actualizador 1.0.2 se revisa también la definición systemd existente. Una unidad propia intacta se actualiza con la plantilla del candidato si declara `service_unit_api=1`; se guarda su copia y se ejecuta `daemon-reload`. Se preservan `ExecStart` (incluidos config/ruta de estado), el estado parado/activo y los archivos `.service.d/`. Una unidad base personalizada se conserva y se informa de ello. Si falla `daemon-reload` antes del arranque nuevo se restaura la definición anterior junto con código/estado.
 
+### Dominio registrable de webs: corrección 1.3.3
+
+La lista de dominios propios incorpora el dominio registrable de cada web/alias/subdominio asociado. Por ejemplo, `app.gremisat.com` y `repostajes.gremisat.com` añaden un único `gremisat.com`; `app.empresa.com.es` añade `empresa.com.es` y `app.empresa.co.uk` añade `empresa.co.uk`.
+
+El paquete incluye la Public Suffix List (ICANN y PRIVATE) y los actualizadores anteriores pueden instalarla con el mismo manifiesto/API. Tras `--upgrade`, verificar `--version` y `--inspect-local-user web6 --sender correo@gremisat.com`: debe aparecer `gremisat.com` y `foreign=false` si esos subdominios pertenecen a la web. Los mensajes ya clasificados conservan su instantánea; los incidentes y bloqueos existentes se mantienen. Detalles en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md#dominio-registrable-desde-133).
+
 ### Alias ISPConfig con usuario NULL: corrección 1.3.2
 
 Corrige `Respuesta web_domain de ISPConfig no válida` cuando un alias tiene `system_user=NULL`, dato válido en ISPConfig. Se interpreta como ausencia de usuario propio y se hereda la asociación de la web padre. El ID padre no se convierte en un nombre `webN`: se utiliza el usuario UNIX registrado en esa web. No modificar los registros SQL para actualizar.
@@ -93,7 +99,7 @@ Se utiliza el `--upgrade` habitual, conservando configuración y estado. Los com
 
 ### Migración desde 1.0.x a 1.1.0 o posterior
 
-El primer upgrade utiliza todavía el actualizador instalado. Por ello el paquete de 1.3.2 incluye también `antispam-isp-1.3.2.tar.gz`, un paquete de compatibilidad con el mismo código y manifiesto que el principal. El repositorio de GitHub conserva su URL histórica; el nombre operativo del programa y del paquete principal es **outbound-spam**.
+El primer upgrade utiliza todavía el actualizador instalado. Por ello el paquete de 1.3.3 incluye también `antispam-isp-1.3.3.tar.gz`, un paquete de compatibilidad con el mismo código y manifiesto que el principal. El repositorio de GitHub conserva su URL histórica; el nombre operativo del programa y del paquete principal es **outbound-spam**.
 
 La preparación de 1.1.0 traslada el almacenamiento de `/root/scripts/.antispam/` a `/var/lib/outbound-spam/`. Durante el cierre del actualizador antiguo se mantiene un alias transitorio; un finalizador privado espera su bloqueo y la limpieza de la descarga, y retira ese alias y la caché antigua automáticamente. Se registra `migracion_completada` en el log. El código nuevo y el servicio ya utilizan la ubicación nueva, incluso durante ese cierre. El traslado también contempla sistemas de archivos distintos para `/root` y `/var`.
 
@@ -110,8 +116,8 @@ Una actualización no regenera una configuración desaparecida: se cancela antes
 /root/scripts/outbound-spam.conf
 /root/scripts/outbound-spam-status.sh
 /root/scripts/outbound-spam.conf.example
-/var/lib/outbound-spam/current -> releases/1.3.2
-/var/lib/outbound-spam/releases/1.3.2/
+/var/lib/outbound-spam/current -> releases/1.3.3
+/var/lib/outbound-spam/releases/1.3.3/
 /var/lib/outbound-spam/installation.json
 /var/lib/outbound-spam/upgrade.lock
 /var/lib/outbound-spam/upgrade-backup-*/

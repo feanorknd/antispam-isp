@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib"))
-from postfix_settings import MonitorError, Websites, domain_belongs
+from postfix_settings import MonitorError, Websites, domain_belongs, registrable_domain
 
 
 def sql_rows(rows):
@@ -62,6 +62,76 @@ class WebsiteTests(unittest.TestCase):
         self.assertTrue(domain_belongs("alias.example", domains))
         self.assertTrue(domain_belongs("www.alias.example", domains))
         self.assertFalse(domain_belongs("other.example", domains))
+
+    def test_subdomains_share_one_registrable_parent(self):
+        sites = self.sites([(6, 0, "app.gremisat.com", "web6", "vhost", "none"),
+                            (20, 6, "repostajes.gremisat.com", None, "alias", "none"),
+                            (9, 0, "other.com", "web9", "vhost", "none")])
+        domains = sites.domains("web6")
+        self.assertEqual(domains, ["app.gremisat.com", "gremisat.com", "repostajes.gremisat.com"])
+        for domain in domains:
+            self.assertTrue(domain_belongs(domain, domains))
+        for domain in ("com", "other.com", "evilgremisat.com", "gremisat.com.other.com", "otra.gremisat.com"):
+            with self.subTest(domain=domain):
+                self.assertFalse(domain_belongs(domain, domains))
+
+    def test_registrable_parents_of_multiple_webs_and_inherited_aliases(self):
+        sites = self.sites([(6, 0, "app.gremisat.com.es", "web6", "vhost", "www"),
+                            (20, 6, "portal.customer.co.uk", None, "alias", "none"),
+                            (21, 20, "deep.app.customer.co.uk", "", "subdomain", "none"),
+                            (9, 6, "app.other.co.uk", "web9", "vhostsubdomain", "none")])
+        domains = sites.domains("web6")
+        self.assertEqual(domains, ["app.gremisat.com.es", "customer.co.uk", "deep.app.customer.co.uk",
+                                   "gremisat.com.es", "portal.customer.co.uk", "www.app.gremisat.com.es"])
+        for domain in ("com.es", "co.uk", "other.co.uk", "app.other.co.uk"):
+            self.assertFalse(domain_belongs(domain, domains))
+        self.assertEqual(sites.domains("web9"), ["app.other.co.uk", "other.co.uk"])
+
+    def test_parent_does_not_create_new_wildcards_or_auto_subdomains(self):
+        for auto in ("www", "*"):
+            with self.subTest(auto=auto):
+                domains = self.sites([(6, 0, "app.gremisat.com", "web6", "vhost", auto)]).domains("web6")
+                self.assertTrue(domain_belongs("gremisat.com", domains))
+                self.assertFalse(domain_belongs("www.gremisat.com", domains))
+                self.assertFalse(domain_belongs("otra.gremisat.com", domains))
+                self.assertTrue(domain_belongs("www.app.gremisat.com", domains))
+
+    def test_registrable_domain_public_suffix_longest_match(self):
+        for domain, expected in (("app.gremisat.com", "gremisat.com"),
+                                  ("gremisat.com", "gremisat.com"),
+                                  ("app.gremisat.com.es", "gremisat.com.es"),
+                                  ("deep.app.customer.co.uk", "customer.co.uk"),
+                                  ("app.school.k12.ak.us", "school.k12.ak.us"),
+                                  ("app.company.unknown-tld", "company.unknown-tld")):
+            with self.subTest(domain=domain):
+                self.assertEqual(registrable_domain(domain), expected)
+
+    def test_psl_wildcards_and_exceptions(self):
+        for domain, expected in (("a.b.ck", "a.b.ck"), ("deep.a.b.ck", "a.b.ck"),
+                                  ("b.ck", None), ("www.ck", "www.ck"), ("app.www.ck", "www.ck"),
+                                  ("app.city.kawasaki.jp", "city.kawasaki.jp"),
+                                  ("app.foo.kawasaki.jp", "app.foo.kawasaki.jp"),
+                                  ("foo.kawasaki.jp", None)):
+            with self.subTest(domain=domain):
+                self.assertEqual(registrable_domain(domain), expected)
+
+    def test_private_suffix_keeps_hosted_customers_separate(self):
+        domains = self.sites([(6, 0, "app.customer.github.io", "web6", "vhost", "none")]).domains("web6")
+        self.assertEqual(domains, ["app.customer.github.io", "customer.github.io"])
+        self.assertFalse(domain_belongs("github.io", domains))
+        self.assertFalse(domain_belongs("other.github.io", domains))
+        self.assertEqual(registrable_domain("app.customer.blogspot.com"), "customer.blogspot.com")
+
+    def test_registrable_parent_uses_idna_lowercase_and_trailing_dot(self):
+        domains = self.sites([(6, 0, "APP.MAÑANA.COM.ES.", "web6", "vhost", "none")]).domains("web6")
+        self.assertEqual(domains, ["app.xn--maana-pta.com.es", "xn--maana-pta.com.es"])
+        self.assertEqual(registrable_domain("APP.MAÑANA.COM.ES."), "xn--maana-pta.com.es")
+        self.assertEqual(registrable_domain("app.食狮.公司.cn"), "xn--85x722f.xn--55qx5d.cn")
+
+    def test_public_suffixes_ips_and_invalid_names_do_not_have_parents(self):
+        for domain in ("com", "com.es", "co.uk", "github.io", "localhost", "", "127.0.0.1", "::1", "a..com", "-a.com"):
+            with self.subTest(domain=domain):
+                self.assertIsNone(registrable_domain(domain))
 
     def test_invalid_text_reports_row_id_and_field_without_echoing_data(self):
         valid = sql_rows([(20, 6, "alias.example", None, "alias", "none")]).split("\t")

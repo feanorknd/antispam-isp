@@ -4,13 +4,29 @@
 
 El monitor lee `postfix/pickup: ID: uid=N from=<...>` y crea una identidad `local:N`. El PID de PHP-FPM o de pickup no forma parte de la cuota. El UID se resuelve con la base de usuarios UNIX; se conservan UID, login y directorio home.
 
-Se consulta `web_domain` en la base ISPConfig configurada, filtrando por `ispconfig_server_id`. Las filas con el `system_user` correspondiente identifican las webs y pools propios. Se recorren sus relaciones `parent_domain_id` para incorporar alias y subdominios que compartan usuario o lo hereden. Un subdominio con usuario/pool diferente tiene su propia identidad. Se respetan también los valores de auto-subdominio `www` y `*` de ISPConfig: no se autoriza cualquier sufijo implícitamente. Se incluyen registros desactivados: sus procesos residuales tampoco deben escapar del control de volumen.
+Se consulta `web_domain` en la base ISPConfig configurada, filtrando por `ispconfig_server_id`. Las filas con el `system_user` correspondiente identifican las webs y pools propios. Se recorren sus relaciones `parent_domain_id` para incorporar alias y subdominios que compartan usuario o lo hereden. Un subdominio con usuario/pool diferente tiene su propia identidad. Se respetan también los valores de auto-subdominio `www` y `*` de ISPConfig. Se incluyen registros desactivados: sus procesos residuales tampoco deben escapar del control de volumen.
 
 No hay listas manuales de dominios por `webX`, no se supone que `web6` sea el registro 6 y no se comparan IPs ni MX. Se consulta una instantánea cacheada por pasada cuando hay nuevas identidades que resolver. Cada mensaje conserva la asociación utilizada para calcular su cuota. Un dominio de la web puede tener el correo alojado fuera del servidor.
 
 Desde 1.3.2, un `system_user=NULL` SQL se interpreta como ausencia de usuario propio, igual que el usuario vacío de un alias heredado. La herencia sigue `parent_domain_id`; los pools con usuario explícito distinto siguen separados. El literal de usuario `NULL` codificado en hexadecimal no se confunde con un NULL SQL. Un dato no interpretable indica fila, `domain_id` y campo en el error, sin publicar su contenido. No se sustituyen NULL de otros campos por dominios o tipos inventados.
 
 `foreign_sender` compara el dominio del remitente **del sobre** con los dominios asociados a esa web. La cabecera visible `From:` no sirve como prueba de identidad. Un dominio de otro cliente del mismo servidor sigue siendo foreign. Un remitente vacío no inventa un dominio. Esta comparación detecta diferencias de dominio, no acredita todas las autorizaciones comerciales de una aplicación.
+
+### Dominio registrable desde 1.3.3
+
+Se añade el dominio registrable (eTLD+1) de cada dominio de la web y de sus alias/subdominios asociados. Se conserva el inventario original y se eliminan duplicados. Si `web6` tiene `app.gremisat.com` y `repostajes.gremisat.com`, el inspector muestra:
+
+```json
+"domains": ["app.gremisat.com", "gremisat.com", "repostajes.gremisat.com"]
+```
+
+Un envío con remitente `correo@gremisat.com` tiene `foreign=false`. Para `app.empresa.com.es` se añade `empresa.com.es`; para `app.empresa.co.uk`, `empresa.co.uk`. No se añaden los sufijos públicos `com.es` ni `co.uk`, ni se autorizan todos los subdominios hermanos del dominio padre. Los auto-subdominios de ISPConfig se generan solo para los dominios originales, no para los padres añadidos.
+
+La resolución usa la Public Suffix List (secciones ICANN y PRIVATE), con coincidencia más larga, comodines, excepciones e IDNA. PRIVATE mantiene separados clientes de plataformas como `cliente.github.io`: no se incorpora `github.io`. Dos pools diferentes siguen teniendo cuotas/identidades independientes, aunque ambos puedan añadir el mismo padre registrable.
+
+La instantánea está incluida en `docs/PUBLIC_SUFFIX_LIST.json`, bajo MPL-2.0, con procedencia, versión y hash de la fuente. Se actualiza al preparar releases mediante `python3 tools/update_public_suffix_list.py`. El funcionamiento normal no necesita red ni paquetes pip. Los sufijos desconocidos siguen la regla implícita `*` de la PSL. Un fallo al cargar la lista se registra como cobertura incompleta.
+
+La regla se aplica a mensajes cuya identidad se resuelva con la versión nueva. Los mensajes ya clasificados conservan su instantánea, y los incidentes/bloqueos existentes se mantienen. Para verificar tras actualizar: `--inspect-local-user web6 --sender correo@gremisat.com`.
 
 Los usuarios sin web asociada se excluyen del seguimiento de webs; root y el usuario interno postfix se excluyen también. Un fallo SQL o un UID no resoluble se registra como cobertura incompleta, no como dominio propio confirmado. La consulta requiere el cliente `mysql`, acceso root por socket y la base/servidor ISPConfig correctos, igual que las integraciones SQL existentes.
 
