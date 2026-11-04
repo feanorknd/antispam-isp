@@ -1,6 +1,6 @@
 # Outbound Spam Monitor
 
-Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión **1.3.3**.
+Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión **1.3.4**.
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
 

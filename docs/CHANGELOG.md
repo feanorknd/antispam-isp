@@ -1,5 +1,14 @@
 # Cambios efectuados
 
+## 1.3.4 — 2026-11-04
+
+- Ayuda reorganizada en instalación, aspectos generales, gestión de incidencias, customizaciones y casos prácticos, con separadores de líneas y explicaciones debajo de cada comando.
+- Cinco casos prácticos numerados y separados, con detecciones simuladas y objetivos de cada acción. Parámetros delimitados como `<CUENTA>`.
+- Ejecutar sin argumentos muestra la ayuda y termina correctamente, sin cargar la configuración ni iniciar acciones operativas. Se omite el bloque `usage:`.
+- Color automático únicamente en terminales compatibles; texto limpio al redirigir, con `TERM=dumb`, sin soporte de color o con `NO_COLOR`.
+- La ayuda documenta la inspección local por nombre UNIX o UID, comportamiento existente verificado para ambas formas.
+- Se conserva Python 3.8+, esquema SQLite 4 y API de upgrade/systemd 1.
+
 ## 1.3.3 — 2026-11-04
 
 - Los dominios de webs PHP/sendmail incluyen su dominio registrable: `app.gremisat.com` y `repostajes.gremisat.com` añaden `gremisat.com` una sola vez, y los remitentes `@gremisat.com` dejan de ser foreign.

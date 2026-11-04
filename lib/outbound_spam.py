@@ -30,7 +30,7 @@ from postfix_settings import restart_postfix, MonitorError, LocalGuard, Websites
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "1.3.3"
+VERSION = "1.3.4"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
 TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|pickup|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
@@ -1984,60 +1984,130 @@ def manage(store, config, commands, args, now):
         return "%d mensajes %s (%d reencolados por antigüedad); se mantiene el bloqueo SMTP" % (count, "liberados" if args.release_held else "eliminados", requeued)
 
 
+class HelpParser(argparse.ArgumentParser):
+    def format_usage(self):
+        return ""
+
+    def format_help(self):
+        import textwrap
+        color = False
+        if sys.stdout.isatty() and os.environ.get("TERM", "dumb") != "dumb" and "NO_COLOR" not in os.environ:
+            try:
+                import curses
+            except ImportError:
+                pass
+            else:
+                try:
+                    curses.setupterm(fd=sys.stdout.fileno())
+                    color = curses.tigetnum("colors") >= 8
+                except (OSError, ValueError, curses.error):
+                    pass
+
+        def paint(text, code):
+            return "\033[" + code + "m" + text + "\033[0m" if color else text
+
+        lines = [paint("OUTBOUND SPAM - AYUDA", "1;36"), "",
+                 "  Control de spam saliente SMTP AUTH y webs PHP/sendmail.",
+                 "  Ejecutar sin parámetros muestra esta misma ayuda.",
+                 "  Los valores entre <...> se sustituyen por los datos reales.", ""]
+
+        def section(title):
+            lines.extend(["-" * 78, paint(title, "1;36"), "-" * 78, ""])
+
+        def command(invocation, description):
+            lines.append("  " + paint(invocation, "1"))
+            lines.extend(textwrap.wrap(description, width=78, initial_indent="      ", subsequent_indent="      "))
+            lines.append("")
+
+        sections = [
+            ("1. INSTALACIÓN, ACTUALIZACIÓN Y DESINSTALACIÓN", (
+                "install_service", "uninstall_service", "install_monit", "uninstall_monit",
+                "install_postfix_guard", "uninstall_postfix_guard", "install_local_guard",
+                "uninstall_local_guard", "upgrade")),
+            ("2. ASPECTOS GENERALES", (
+                "help", "version", "status", "doctor", "config_path", "state_dir", "daemon",
+                "from_start", "quiet", "lock_wait", "replay", "now", "local_domain")),
+            ("3. GESTIÓN DE PROBLEMAS DETECTADOS", (
+                "inspect_local_user", "sender", "list_held", "block_user", "purge_user_queue",
+                "release_held", "delete_held", "unblock", "ack", "resolve_user")),
+            ("4. CUSTOMIZACIONES, USUARIOS E IGNORES", (
+                "set_custom_limit", "set_ignore", "set_limits", "configure_postfix", "max_sent",
+                "time_period", "outbound_delay", "postfix_client_limit", "destination_delay", "yes", "skip_postfix")),
+        ]
+        actions = {a.dest: a for a in self._actions if a.help != argparse.SUPPRESS}
+        formatter = self._get_formatter()
+        for title, names in sections:
+            section(title)
+            if names[0] == "inspect_local_user":
+                lines.extend(["  <CUENTA>: dirección de correo o local:<UID> (por ejemplo local:5009).",
+                              "  Bajar del umbral no libera HOLD ni retira los bloqueos existentes.",
+                              "  El bloqueo local suspende sendmail/postdrop también hacia buzones locales.", ""])
+            if names[0] == "set_custom_limit":
+                lines.extend(["  Las reglas por cuenta se guardan en outbound-spam.conf y se aplican",
+                              "  en la siguiente pasada. No liberan HOLD ni resuelven incidentes.",
+                              "  Los límites cuentan destinatarios externos, no mensajes.", ""])
+            for name in names:
+                action = actions[name]
+                command(formatter._format_action_invocation(action), action.help)
+
+        section("5. CASOS PRÁCTICOS (EJEMPLOS SIMULADOS)")
+        launcher = str(Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent)) / "outbound-spam.sh")
+        cases = [
+            ("Caso 1. Alerta por una cuenta comprometida",
+             "Supuesto: cuenta@example.org supera el umbral y tiene correo retenido. Tras revisar la alerta, confirmamos spam.", [
+                 ("--status", "Consultar el incidente, los bloqueos y el estado del analizador."),
+                 ("--list-held cuenta@example.org", "Revisar los mensajes retenidos antes de decidir su destino."),
+                 ("--block-user cuenta@example.org", "Asegurar el bloqueo de nuevos envíos externos, si el guard está instalado."),
+                 ("--purge-user-queue cuenta@example.org", "BORRAR la salida externa pendiente verificada, incluida HOLD. Conserva mensajes locales o mixtos con locales pendientes.")],
+             "Después de sanear la cuenta y cambiar su credencial comprometida:", [
+                 ("--ack cuenta@example.org", "Cerrar el incidente y evitar reabrirlo por las mismas evidencias antiguas."),
+                 ("--unblock cuenta@example.org", "Permitir de nuevo los envíos externos de la cuenta ya saneada.")]),
+            ("Caso 2. Falso positivo por una campaña legítima",
+             "Supuesto: boletin@ejemplo.com ha sido bloqueada por un envío autorizado.", [
+                 ("--status", "Confirmar la alerta y la cuenta afectada."),
+                 ("--list-held boletin@ejemplo.com", "Comprobar que el correo retenido pertenece a la campaña legítima."),
+                 ("--set-custom-limit boletin@ejemplo.com 2000 900", "Permitir hasta 2000 destinatarios externos en 900 segundos y retirar cualquier ignore anterior."),
+                 ("--resolve-user boletin@ejemplo.com", "Liberar HOLD propio, cerrar el incidente y retirar el bloqueo en una sola operación.")], "", []),
+            ("Caso 3. Decidir cada acción por separado",
+             "Supuesto: tras revisar una alerta, queremos entregar los mensajes retenidos pero mantener la cuenta bloqueada mientras investigamos.", [
+                 ("--release-held cuenta@example.org", "Liberar el correo propio retenido y detener la repetición de HOLD para ese incidente; mantener bloqueo e incidente.")],
+             "Una vez terminada la investigación y saneada la cuenta:", [
+                 ("--ack cuenta@example.org", "Cerrar el incidente sin alterar por sí solo los bloqueos ni la cola."),
+                 ("--unblock cuenta@example.org", "Retirar finalmente el bloqueo de nuevos envíos.")]),
+            ("Caso 4. Alerta originada por una web PHP/sendmail",
+             "Supuesto: web6 tiene UID 5009 y se detecta salida excesiva de local:5009.", [
+                 ("--inspect-local-user web6", "Consultar UID, usuario UNIX y dominios asociados por ISPConfig."),
+                 ("--inspect-local-user 5009 --sender ventas@ejemplo.com", "Consultar la misma identidad por UID y comprobar el dominio del remitente del sobre."),
+                 ("--list-held local:5009", "Revisar las retenciones atribuidas a esa identidad local."),
+                 ("--block-user local:5009", "Suspender toda nueva inyección sendmail/postdrop de la web, con la ACL local instalada."),
+                 ("--delete-held local:5009", "BORRAR irreversiblemente las retenciones propias confirmadas como spam.")],
+             "Después de corregir el script o CMS que originó el envío:", [
+                 ("--resolve-user local:5009", "Cerrar el incidente, liberar cualquier HOLD propio restante y retirar la suspensión local.")]),
+            ("Caso 5. Excepción autorizada y vuelta a la supervisión",
+             "Supuesto: una cuenta necesita quedar temporalmente excluida de los umbrales.", [
+                 ("--set-ignore boletin@ejemplo.com", "Guardar la excepción y eliminar su límite particular; conservar bloqueos y retenciones existentes."),
+                 ("--resolve-user boletin@ejemplo.com", "Resolver el incidente ya revisado, si lo hay, y liberar/desbloquear la cuenta.")],
+             "Al terminar el periodo de excepción:", [
+                 ("--set-custom-limit boletin@ejemplo.com 500 3600", "Retirar el ignore y volver a supervisar con 500 destinatarios externos por hora.")]),
+        ]
+        for title, intro, steps, transition, final_steps in cases:
+            lines.extend(["  " + "-" * 76, paint("  " + title, "1;33"), "  " + "-" * 76, ""])
+            lines.extend(textwrap.wrap(intro, width=78, initial_indent="  ", subsequent_indent="  "))
+            lines.append("")
+            for options, description in steps:
+                command(launcher + " " + options, description)
+            if transition:
+                lines.extend(textwrap.wrap(transition, width=78, initial_indent="  ", subsequent_indent="  "))
+                lines.append("")
+            for options, description in final_steps:
+                command(launcher + " " + options, description)
+        return "\n".join(lines)
+
+
 def cli():
-    guide = """GUÍA RÁPIDA DE INCIDENCIAS
-  Revisar una alerta y sus retenciones:
-    outbound-spam.sh --status
-    outbound-spam.sh --list-held cuenta@example.org
-
-  Cuenta comprometida: suspender sus nuevos envíos externos y purgar lo pendiente:
-    outbound-spam.sh --block-user cuenta@example.org
-    outbound-spam.sh --purge-user-queue cuenta@example.org
-  La purga BORRA mensajes; conserva los locales/mixtos con locales pendientes.
-
-  Falso positivo: ajustar antes el límite/excepción en la configuración y resolver:
-    outbound-spam.sh --set-custom-limit cuenta@example.org 2000 900
-    outbound-spam.sh --resolve-user cuenta@example.org
-  Libera las retenciones propias, reconoce el incidente y retira el bloqueo remoto.
-
-  Límites y excepciones por cuenta, guardados en outbound-spam.conf:
-    outbound-spam.sh --set-custom-limit boletin@ejemplo.com 2000 900
-      Hasta 2000 destinatarios externos en 900 segundos; sustituye su límite anterior
-      y retira la cuenta de ignore si estaba ignorada.
-    outbound-spam.sh --set-ignore boletin@ejemplo.com
-      Ignora la cuenta y elimina su límite particular; repetirlo no crea duplicados.
-    outbound-spam.sh --set-custom-limit boletin@ejemplo.com 500 3600
-      Vuelve a supervisarla con 500 destinatarios externos por hora.
-  Requieren una dirección válida o local:UID y enteros positivos; conservan las demás cuentas.
-  Se aplican en la siguiente pasada, sin reiniciar. No desbloquean ni liberan HOLD.
-
-  Decidir por separado el destino de mensajes retenidos:
-    outbound-spam.sh --release-held cuenta@example.org   # liberar, sin desbloquear
-    outbound-spam.sh --delete-held cuenta@example.org    # eliminar, irreversible
-    outbound-spam.sh --unblock cuenta@example.org        # permitir externos, sin liberar
-    outbound-spam.sh --ack cuenta@example.org            # reconocer, sin liberar/desbloquear
-
-  Instalar el servicio/monitor o actualizar el programa:
-    outbound-spam.sh --install-service
-    outbound-spam.sh --install-monit
-    outbound-spam.sh --upgrade
-
-  Webs PHP/sendmail, identificadas automáticamente por UID e ISPConfig:
-    outbound-spam.sh --inspect-local-user web6 --sender ventas@ejemplo.com
-    outbound-spam.sh --set-custom-limit local:5009 300 3600
-    outbound-spam.sh --resolve-user local:5009
-  La cuota cuenta externos. Su bloqueo impide toda inyección sendmail/postdrop,
-  también a buzones locales; SMTP sin AUTH a localhost requiere otro control.
-
-  Los avisos de correo tienen mínimo 6 horas por cuenta. Detección y contención
-  siguen en cada pasada. El calentamiento es informativo y no hace fallar Monit.
-  Fechas de presentación: hora local del servidor. Estado e inventario: no borrar.
-"""
-    launcher = Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent)) / "outbound-spam.sh"
-    guide = guide.replace("outbound-spam.sh --", str(launcher) + " --")
-    p = argparse.ArgumentParser(prog="outbound-spam.sh", description="Control de spam saliente SMTP AUTH y webs PHP/sendmail: log incremental y cola Postfix.",
-                                formatter_class=argparse.RawDescriptionHelpFormatter, epilog=guide)
-    p.add_argument("--version", action="version", version=VERSION)
+    p = HelpParser(prog="outbound-spam.sh")
+    p._actions[0].help = "Mostrar esta ayuda y los casos prácticos"
+    p.add_argument("--version", action="version", version=VERSION, help="Mostrar la versión instalada")
     p.add_argument("--config-fd", type=int, help=argparse.SUPPRESS)
     p.add_argument("--config", "-c", "--config-path", dest="config_path", default=str(Path(os.environ.get("OUTBOUND_SPAM_BASE", Path(__file__).resolve().parent.parent)) / "outbound-spam.conf"), help="Archivo Bash privado (0600); se recarga y conserva al actualizar")
     p.add_argument("--state-dir", help="Ruta de estado de esta instancia; en replay debe ser distinta de la operativa")
@@ -2071,7 +2141,7 @@ def cli():
     mode.add_argument("--replay", metavar="LOG", help="Análisis offline aislado, sin órdenes Postfix/SQL ni notificaciones")
     mode.add_argument("--status", action="store_true", help="Mostrar estado y fechas locales: código 0 sano/calentamiento, 1 alerta, 2 error")
     mode.add_argument("--doctor", action="store_true", help="Comprobar dependencias y configuración, sin acciones de contención")
-    mode.add_argument("--inspect-local-user", metavar="UID_O_USUARIO", help="Consultar identidad UNIX y dominios ISPConfig de una web, sin enviar ni bloquear")
+    mode.add_argument("--inspect-local-user", metavar="UID_O_USUARIO", help="Consultar identidad UNIX y dominios ISPConfig; acepta nombre (web6) o UID (5009), sin enviar ni bloquear")
     mode.add_argument("--install-local-guard", action="store_true", help="Instalar ACL hash de sendmail/postdrop y recargar Postfix")
     mode.add_argument("--uninstall-local-guard", action="store_true", help="Restaurar authorized_submit_users; requiere webs desbloqueadas")
     mode.add_argument("--install-monit", action="store_true", help="Instalar Spam_Status, validar y reiniciar Monit")
@@ -2090,6 +2160,17 @@ def cli():
     }
     for option, explanation in operations.items():
         mode.add_argument("--" + option, metavar="CUENTA", help=explanation)
+    metavars = {"config_path": "ARCHIVO", "state_dir": "RUTA", "now": "TIMESTAMP",
+                "local_domain": "DOMINIO", "max_sent": "MAXIMO", "time_period": "SEGUNDOS",
+                "outbound_delay": "RETRASO", "postfix_client_limit": "MAXIMO",
+                "destination_delay": "RETRASO", "lock_wait": "SEGUNDOS", "sender": "REMITENTE"}
+    for action in p._actions:
+        if action.nargs != 0 and action.help != argparse.SUPPRESS:
+            value = action.metavar or metavars.get(action.dest, action.dest.upper())
+            action.metavar = tuple("<" + v + ">" for v in value) if isinstance(value, tuple) else "<" + value + ">"
+    if len(sys.argv) == 1:
+        p.print_help()
+        p.exit()
     args = p.parse_args()
     if args.sender is not None and not args.inspect_local_user:
         p.error("--sender requiere --inspect-local-user")

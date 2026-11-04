@@ -4,6 +4,8 @@ Los directorios de pruebas y datos de validación se conservan **fuera del repos
 
 ## Pruebas locales
 
+Validación local 1.3.4 (2026-11-04): **224 pruebas: 205 correctas y 19 omitidas por requisitos del entorno**, sin fallos. Además, 18 de dominios/PSL, 11 de configuración y 9 HTTP públicas correctas. Incluye presentación de ayuda, salida sin argumentos, color y fallback, separadores de casos prácticos, inspección por nombre/UID y regresiones de distribución/upgrade con comandos simulados. Detalles: [RELEASE_1.3.4.md](RELEASE_1.3.4.md).
+
 Validación 1.3.3 (2026-11-04): **221 pruebas de integración + 18 de dominios/PSL + 11 de configuración + 9 HTTP por entorno** en Focal/Python 3.8 y Noble/Python 3.12, sin errores ni omisiones. Incluye upgrade desde el release público 1.3.2, doctor e inspector con padres registrables, envío real de sendmail desde ese padre, cuotas y contención con Postfix real. Resultados: [TEST_RESULTS_1.3.3.json](TEST_RESULTS_1.3.3.json).
 
 Las regresiones públicas de dominios incluyen dos subdominios con un único padre, sufijos compuestos `com.es`/`co.uk`, coincidencia PSL más larga, comodines/excepciones, sufijos privados e IDNA. La lista PSL se distribuye en el paquete y las pruebas de ejecución se realizan sin red.

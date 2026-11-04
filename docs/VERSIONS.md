@@ -4,13 +4,17 @@
 
 | Elemento | Versión |
 |---|---|
-| Aplicación | 1.3.3 |
+| Aplicación | 1.3.4 |
 | Esquema SQLite privado (`user_version`) | 4 |
 | Python mínimo | 3.8 |
 | Bash utilizado | 5.0 o posterior en las distribuciones verificadas |
 | Postfix requerido | 3.1+ para `postqueue -j`; integración con `postfix-sqlite` |
 
 `VERSION` y `--version` deben coincidir; las pruebas lo comprueban. Las futuras modificaciones incompatibles del esquema deberán introducir una migración y actualizar este documento.
+
+## Distribución 1.3.4
+
+Reorganiza la ayuda, incorpora cinco casos prácticos separados y color opcional según la terminal. Sin argumentos muestra ayuda y termina con código 0. Documenta y verifica la inspección local por nombre UNIX o UID. Mantiene Python 3.8+, esquema SQLite 4, `upgrade_api=1` y `service_unit_api=1`, sin cambios de configuración. Detalles: [RELEASE_1.3.4.md](RELEASE_1.3.4.md).
 
 ## Distribución 1.3.3
 
