@@ -95,7 +95,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--messages", type=int, default=10000)
     p.add_argument("--repeats", type=int, default=3)
-    p.add_argument("--reference", default="main")
+    p.add_argument("--reference", default="v1.3.4")
     p.add_argument("--ignored-percent", type=int, default=0)
     p.add_argument("--local-percent", type=int, default=0)
     p.add_argument("--mode", choices=["baseline", "analytics"])

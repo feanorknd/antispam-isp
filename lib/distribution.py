@@ -1,6 +1,7 @@
 """Instalación versionada y actualizaciones desde los releases públicos de GitHub."""
 import argparse
 import ast
+import base64
 import contextlib
 import fcntl
 import hashlib
@@ -19,16 +20,18 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+import zlib
 import runtime
 
 PROJECT = "feanorknd/antispam-isp"
 LATEST = "https://api.github.com/repos/" + PROJECT + "/releases/latest"
-RUNTIME = (
+BASE_RUNTIME = (
     "VERSION", "install.sh", "outbound-spam.sh", "outbound-spam-status.sh", "outbound-spam.conf.example",
     "lib/outbound_spam.py", "lib/postfix_settings.py", "lib/runtime.py", "lib/state_recovery.py",
     "lib/load_config.sh", "lib/distribution.py",
-    "lib/analytics.py", "lib/dashboard.py", "web/index.html", "web/app.js", "web/style.css",
 )
+BUNDLED_COMPONENTS = ("lib/analytics.py", "lib/dashboard.py", "web/index.html", "web/app.js", "web/style.css")
+RUNTIME = BASE_RUNTIME + BUNDLED_COMPONENTS
 ROOT_FILES = {"README.md"} | set(RUNTIME)
 MAX_ARCHIVE = 10 * 1024 * 1024
 MAX_UNPACKED = 20 * 1024 * 1024
@@ -98,7 +101,10 @@ def make_manifest(source):
     source = Path(source)
     number = (source / "VERSION").read_text().strip()
     version(number)
-    names = list(RUNTIME) + ["README.md"]
+    bundled = None
+    if not all((source / name).is_file() for name in BUNDLED_COMPONENTS):
+        bundled = read_bundle(source)
+    names = list(BASE_RUNTIME if bundled else RUNTIME) + ["README.md"]
     names += [p.relative_to(source).as_posix() for p in sorted((source / "docs").glob("*")) if p.is_file() and allowed(p.relative_to(source).as_posix())]
     files = {}
     for name in names:
@@ -106,8 +112,30 @@ def make_manifest(source):
         if path.is_symlink() or not path.is_file():
             raise ValueError("Falta un componente regular: " + name)
         files[name] = digest(path)
-    return {"project": PROJECT, "format": 1, "upgrade_api": 1, "version": number,
-            "schema_version": 4, "python_min": [3, 8], "service_unit_api": 1, "files": files}
+    manifest = {"project": PROJECT, "format": 1, "upgrade_api": 1, "version": number,
+                "schema_version": 4, "python_min": [3, 8], "service_unit_api": 1, "files": files}
+    if bundled:
+        manifest["bundled_components"] = {name: hashlib.sha256(text.encode("utf-8")).hexdigest() for name, text in bundled.items()}
+    return manifest
+
+
+def read_bundle(source):
+    tree = ast.parse((Path(source) / "lib/runtime.py").read_text())
+    values = [node.value.value for node in tree.body if isinstance(node, ast.Assign)
+              and any(isinstance(target, ast.Name) and target.id == "_RELEASE_BUNDLE" for target in node.targets)
+              and isinstance(node.value, ast.Constant)]
+    if not values or values == [""]:
+        return None
+    if len(values) != 1 or not isinstance(values[0], str):
+        raise ValueError("Bundle de distribución inválido")
+    decoder = zlib.decompressobj()
+    data = decoder.decompress(base64.b64decode(values[0], validate=True), MAX_UNPACKED + 1)
+    if len(data) > MAX_UNPACKED or not decoder.eof or decoder.unused_data:
+        raise ValueError("Bundle de distribución excesivo/incompleto")
+    files = json.loads(data)
+    if not isinstance(files, dict) or set(files) != set(BUNDLED_COMPONENTS) or any(not isinstance(text, str) for text in files.values()):
+        raise ValueError("Componentes del bundle incorrectos")
+    return files
 
 
 def validate_tree(source, expected=None):
@@ -123,7 +151,9 @@ def validate_tree(source, expected=None):
     if expected is not None and version(number) != version(expected):
         raise ValueError("La versión del paquete no coincide con el release")
     files = manifest["files"]
-    if not isinstance(files, dict) or set(RUNTIME) - set(files):
+    packed = manifest.get("bundled_components")
+    required = BASE_RUNTIME if packed or version(number) < (1, 5, 0) else RUNTIME
+    if not isinstance(files, dict) or set(required) - set(files):
         raise ValueError("El paquete no contiene todos los componentes")
     for name, checksum in files.items():
         if not allowed(name) or not re.fullmatch(r"[a-f0-9]{64}", checksum):
@@ -137,6 +167,14 @@ def validate_tree(source, expected=None):
     constants = [n.value.value for n in tree.body if isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "VERSION" for t in n.targets) and isinstance(n.value, ast.Constant)]
     if constants != [number]:
         raise ValueError("La versión del motor no coincide con el paquete")
+    if packed:
+        bundle = read_bundle(source)
+        checksums = {name: hashlib.sha256(text.encode("utf-8")).hexdigest() for name, text in (bundle or {}).items()}
+        if checksums != packed or set(checksums) != set(BUNDLED_COMPONENTS):
+            raise ValueError("No coinciden los componentes integrados de la distribución")
+        for name, text in bundle.items():
+            if name.endswith(".py"):
+                compile(text, name, "exec")
     for name in files:
         if name.endswith(".py"):
             compile((source / name).read_bytes(), name, "exec")
@@ -163,7 +201,7 @@ def unpack(archive, destination, expected):
             seen.add(name)
             relative = "/".join(parts[1:])
             if member.isdir():
-                if relative and relative not in ("lib", "docs"):
+                if relative and relative not in ("lib", "docs", "web"):
                     raise ValueError("Directorio no permitido")
                 (destination / name).mkdir(mode=0o700, parents=True, exist_ok=True)
                 continue

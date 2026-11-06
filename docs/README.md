@@ -13,6 +13,8 @@
 | [SIMULATION_0.2.0.md](SIMULATION_0.2.0.md) | Repetición con reducción del umbral por dominio y avisos cada seis horas |
 | [POSTFIX.md](POSTFIX.md) | Parámetros de ajuste, bloque Ratelimits, relays selectivos y perfiles recomendados |
 | [SERVICE.md](SERVICE.md) | Servicio systemd, instalación/desinstalación y configuración en caliente |
+| [DASHBOARD.md](DASHBOARD.md) | Histórico de 60 días, gráficas, filtros, Nginx, recuperación y tiempos del trabajador |
+| [RELEASE_2.0.0.md](RELEASE_2.0.0.md) | Release estable 2.0 y actualización directa desde 1.3.x |
 | [RECOVERY.md](RECOVERY.md) | Verificaciones, copias y recuperación de SQLite/operaciones críticas |
 | [UPGRADE.md](UPGRADE.md) | Paquete de instalación y actualizaciones desde los releases públicos |
 | [VERSIONS.md](VERSIONS.md) | Versiones y matriz de compatibilidad |
@@ -24,7 +26,7 @@
 - Plan A: análisis periódico y contención posterior a la detección.
 - Bash como interfaz y Python estándar como motor.
 - SMTP autenticado y, desde 1.3.0, inyecciones locales de webs identificadas por UID e ISPConfig.
-- Solo destinatarios externos; incluir mensajes todavía pendientes de salida.
+- Protección por destinatarios externos, incluidos los pendientes; estadísticas separadas de destinos locales y remotos.
 - ISPConfig de un único servidor.
 - Estado privado persistente fuera de `/tmp`.
 - Informes y acciones configurables por el administrador.

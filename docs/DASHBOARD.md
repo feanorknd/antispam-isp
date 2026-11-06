@@ -1,17 +1,28 @@
-# Dashboard e histórico · rama de pruebas 1.5
+# Dashboard e histórico · versión estable 2.0
 
-Versión de pruebas actual **1.5.1**, separada de `main` y del release estable **1.3.4**. No se publica como último release estable. El tar.gz se genera con `python3 tools/build_release.py --output dist/1.5.1`.
+Versión estable **2.0.0**, rama `main`, basada en las pruebas 1.5.0/1.5.1. El tar.gz se genera con `python3 tools/build_release.py --output dist/2.0.0`.
 
-En el workspace de desarrollo, `var/stable-1.3.4/` es un worktree separado de `main`, con las siete correcciones locales originales conservadas. El desarrollo 1.5 permanece en el worktree principal. `tools/stable-1.3.4-corrections.patch` conserva esas correcciones independientemente de las nuevas funciones; no se han creado commits ni publicaciones.
+La rama `1.5` conserva la última versión de pruebas y la rama `1.3` mantiene las correcciones de la línea anterior. El release `v1.3.4` sigue disponible para recuperación.
 
 ## Instalación o actualización desde el release actual
 
-Copiar `outbound-spam-1.5.1.tar.gz` y `SHA256SUMS` a un directorio de preparación del **servidor de pruebas**. En ese directorio (válido también al actualizar desde 1.5.0):
+Desde cualquier versión 1.3.x instalada mediante releases:
+
+```bash
+sudo /root/scripts/outbound-spam.sh --upgrade
+sudo /root/scripts/outbound-spam.sh --version
+sudo /root/scripts/outbound-spam.sh --doctor
+sudo systemctl status outbound-spam.service
+```
+
+El actualizador incorpora las variables ausentes, deja `analytics_enabled=true` por defecto y reinicia únicamente el servicio que estuviera activo. Una asignación existente `analytics_enabled=false` se conserva. No se necesita instalar una versión intermedia ni ejecutar de nuevo los instaladores de guards/servicio.
+
+También se puede copiar `outbound-spam-2.0.0.tar.gz` y `SHA256SUMS` a un directorio de preparación. En ese directorio (válido igualmente desde las versiones de pruebas 1.5.x):
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf outbound-spam-1.5.1.tar.gz
-sudo ./outbound-spam-1.5.1/install.sh --target /root/scripts --config /root/scripts/outbound-spam.conf
+tar -xzf outbound-spam-2.0.0.tar.gz
+sudo ./outbound-spam-2.0.0/install.sh --target /root/scripts --config /root/scripts/outbound-spam.conf
 sudo /root/scripts/outbound-spam.sh --version
 sudo /root/scripts/outbound-spam.sh --doctor
 sudo systemctl status outbound-spam.service
@@ -21,7 +32,7 @@ Usar las rutas reales si son distintas. El instalador del candidato admite una i
 
 En una instalación nueva se puede utilizar `--install-deps` si falta `postfix-sqlite`. Después configurar las direcciones y acciones reales y seguir [INSTALLATION.md](INSTALLATION.md). El instalador inicial deja los avisos desactivados.
 
-**No usar el `--upgrade` de 1.3.4 para entrar en esta versión de pruebas:** consulta solo el release estable y su validador no conoce los nuevos componentes. Las siguientes entregas de pruebas se instalarán del mismo modo, con número de versión nuevo; no se sustituye una distribución ya instalada por otra de contenido distinto con el mismo número.
+**El `--upgrade` publicado de 1.3.0–1.3.4 admite el paquete 2.0.0.** Para conservar esa compatibilidad, el asset integra los fuentes del trabajador, la API y los recursos web dentro de `lib/runtime.py`, uno de los componentes admitidos por los validadores anteriores. El manifiesto mantiene API 1 y registra también los hashes de los componentes integrados. En el repositorio se mantienen los fuentes separados; no se extrae código sobre el directorio de estado ni se requieren pip/npm.
 
 ## Configuración
 
@@ -70,7 +81,7 @@ Abrir `https://su-dominio/spam-status/` en el navegador. Directamente en el serv
 - Filtros comunes por origen SMTP/sendmail, destino local/remoto/sin clasificar y condición de cuenta ignorada.
 - Buscador de todos los usuarios registrados, con paginación y selección múltiple de hasta 200 identidades por consulta. El catálogo no depende del intervalo elegido. Se muestran email, nombre UNIX y dominios disponibles; la identidad local interna sigue siendo `local:UID`.
 - Gráfica de destinatarios o mensajes aceptados y entregas notificadas. Rechazos en rojo, retenciones en naranja y marcas de bloqueo/desbloqueo. Un clic en un tramo abre ese periodo.
-- Dos tablas por usuario, para destinos remotos y locales, y una sección de destinos sin clasificar. Mensajes, destinatarios, entregados, diferidos, fallidos y pendientes. Las páginas contienen hasta 100 filas entre las categorías; los totales y la gráfica cubren todo el resultado.
+- Dos tablas por usuario, para destinos remotos y locales, y una sección de destinos sin clasificar. Mensajes, destinatarios, entregados, diferidos, fallidos y pendientes. Todas las cabeceras y valores, incluidos números y cronología, se alinean a la izquierda. Las páginas contienen hasta 100 filas entre las categorías; los totales y la gráfica cubren todo el resultado.
 - Cronología de los últimos 100 eventos relevantes del periodo. Los bloqueos representan la suspensión registrada por el monitor; los problemas de publicación siguen reflejándose en el estado operativo.
 - Refresco cada 60 segundos mientras la pestaña esté visible, sin refresco periódico para rangos históricos fijos. Los cambios de filtros cancelan las consultas anteriores. No hay recursos CDN, cuentas cloud ni dependencias pip/npm en el servidor.
 
@@ -90,7 +101,7 @@ Las horas se muestran en la zona del navegador. Los tramos se alinean en UTC; lo
 
 ## Funcionamiento y rendimiento
 
-El servicio supervisa un proceso hijo `analytics.py`, de prioridad reducida, con reintentos de arranque espaciados. No depende de visitas a la web y se detiene con la unidad. La pasada del monitor marca IDs modificados dentro de la transacción de lectura del log; un trabajador copia los cambios mediante SQL nativo y actualiza los agregados. Solo el tráfico omitido por el monitor se interpreta adicionalmente. La confirmación del histórico precede a la retirada de pendientes y comprueba su revisión, para no borrar una modificación posterior.
+El servicio supervisa un proceso hijo estadístico de prioridad reducida (`runtime.py --analytics-worker` en 2.0), con reintentos de arranque espaciados. No depende de visitas a la web y se detiene con la unidad. La pasada del monitor marca IDs modificados dentro de la transacción de lectura del log; un trabajador copia los cambios mediante SQL nativo y actualiza los agregados. Solo el tráfico omitido por el monitor se interpreta adicionalmente. La confirmación del histórico precede a la retirada de pendientes y comprueba su revisión, para no borrar una modificación posterior.
 
 El trabajador procesa lotes acotados, espera en reposo y usa una caché SQLite pequeña. Las peticiones web consultan el histórico en solo lectura: máximo dos consultas simultáneas, presupuesto SQL de dos segundos y respuestas paginadas. Las gráficas se dibujan con JavaScript/SVG en el navegador.
 
@@ -99,10 +110,10 @@ El presupuesto de aceptación es **hasta un 20 % de CPU adicional sobre carga re
 Prueba reproducible del repositorio:
 
 ```bash
-python3 tools/benchmark_analytics.py --messages 10000 --repeats 5 --ignored-percent 5 --local-percent 20
+python3 tools/benchmark_analytics.py --reference v1.3.4 --messages 10000 --repeats 5 --ignored-percent 5 --local-percent 20
 ```
 
-Compara contra `main`, crea solo datos sintéticos y cuenta captura, procesamiento, comprobación/copia y tres consultas de 60 días. Véase [RELEASE_1.5.0.md](RELEASE_1.5.0.md) para los resultados de esta entrega.
+Compara contra el release estable anterior `v1.3.4`, crea solo datos sintéticos y cuenta captura, procesamiento, comprobación/copia y tres consultas de 60 días. Véase [RELEASE_2.0.0.md](RELEASE_2.0.0.md).
 
 ## Integridad y recuperación automática
 
@@ -130,13 +141,13 @@ sudo cat /var/lib/outbound-spam/analytics-status.json
 
 ### Quién actualiza el histórico y cuánto tarda
 
-El demonio `outbound-spam.service` lanza y supervisa el hijo `analytics.py` al arrancar, además de lanzar las pasadas del analizador. El trabajador permanece en segundo plano dentro de la misma unidad. No lo lanza Nginx ni una visita al panel, y no es una tarea cron. Tras cada lote espera aproximadamente 0,5 segundos si había pendientes o 5 segundos si no había trabajo. El analizador espera `run_interval` (60 segundos por defecto) **después de terminar** cada pasada.
+El demonio `outbound-spam.service` lanza y supervisa el módulo estadístico al arrancar, además de lanzar las pasadas del analizador. En 2.0 su proceso se identifica como `runtime.py --analytics-worker DIRECTORIO`. Permanece en segundo plano dentro de la misma unidad. No lo lanza Nginx ni una visita al panel, y no es una tarea cron. Tras cada lote espera aproximadamente 0,5 segundos si había pendientes o 5 segundos si no había trabajo. El analizador espera `run_interval` (60 segundos por defecto) **después de terminar** cada pasada. Un bloqueo exclusivo impide dos trabajadores para el mismo estado.
 
 Para ver los procesos:
 
 ```bash
 sudo systemctl status outbound-spam.service
-pgrep -af '/lib/analytics.py'
+pgrep -af 'runtime.py --analytics-worker|/lib/analytics.py'
 ```
 
 Para ver las duraciones sin abrir SQLite:

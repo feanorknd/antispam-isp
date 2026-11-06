@@ -24,6 +24,7 @@ declare -A custom_limits=(
 - La misma dirección en mensajes distintos vuelve a contar; los intentos de entrega del mismo destinatario y mensaje no.
 - Las cuentas SASL se normalizan a minúsculas, como en el uso habitual de ISPConfig. La parte local de las direcciones destinatarias se conserva.
 - `ignore` excluye completamente la cuenta de la detección nueva y de la creación de acciones. No borra un incidente ni un bloqueo ya existente: utilizar los comandos administrativos correspondientes.
+- Desde 2.0, las cuentas de `ignore` sí participan en el histórico estadístico, con filtros para incluirlas/excluirlas. Esto no activa su protección antispam.
 - Un límite particular sustituye tanto máximo como periodo de esa cuenta.
 
 ### Administrar límites y excepciones desde el script
@@ -93,6 +94,15 @@ Se puede editar y guardar el archivo mientras el servicio está activo. Cada pas
 La caché `/var/lib/outbound-spam/ARCHIVO.conf.last-good.json` contiene valores privados y tiene modo 0600; el nombre predeterminado es `outbound-spam.conf.last-good.json`. Los cambios válidos se adoptan al iniciar una nueva pasada. Guardar parámetros de Postfix con nano no edita por sí solo `main.cf`: usar `--configure-postfix` para aplicarlos. Las rutas de instancia/estado requieren una migración y reinstalación controladas; la unidad fija su directorio de estado. Véase [SERVICE.md](SERVICE.md).
 
 ## Lectura y estado
+
+### Histórico y dashboard desde 2.0
+
+```bash
+analytics_enabled=true
+analytics_outbox_mb=64
+```
+
+El upgrade añade las variables ausentes conservando los valores existentes. El histórico conserva 60 días y se sirve en el mismo host/puerto bajo `/dashboard/`; `/` sigue siendo el estado JSON. El trabajador independiente arranca y se detiene con el servicio. Cambiar `analytics_enabled` requiere reiniciar la unidad. `analytics_outbox_mb` limita los eventos pendientes del tráfico omitido por el monitor; una pérdida por saturación se indica en el panel. Los cambios normales se transfieren por lotes con revisiones e idempotencia. Guía de filtros, Nginx, integridad y tiempos: [DASHBOARD.md](DASHBOARD.md).
 
 | Variable | Defecto | Uso |
 |---|---:|---|

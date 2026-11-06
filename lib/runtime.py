@@ -16,6 +16,43 @@ import subprocess
 import sys
 import threading
 import time
+import types
+import zlib
+
+
+# Sustituido por el empaquetador: los actualizadores 1.3.x solo admiten los
+# componentes originales. El repo conserva los fuentes separados y legibles.
+_RELEASE_BUNDLE = ""
+_bundle_files = None
+
+
+def bundled_files():
+    global _bundle_files
+    if _bundle_files is None:
+        _bundle_files = json.loads(zlib.decompress(base64.b64decode(_RELEASE_BUNDLE))) if _RELEASE_BUNDLE else {}
+    return _bundle_files
+
+
+def install_bundled_modules():
+    files = bundled_files()
+    for name in ("analytics", "dashboard"):
+        filename = "lib/" + name + ".py"
+        if filename in files and name not in sys.modules:
+            module = types.ModuleType(name)
+            module.__file__ = str(Path(__file__).with_name(name + ".py"))
+            sys.modules[name] = module
+            try:
+                exec(compile(files[filename], module.__file__, "exec"), module.__dict__)
+            except BaseException:
+                sys.modules.pop(name, None)
+                raise
+
+
+def dashboard_asset(filename):
+    files = bundled_files()
+    if files:
+        return files["web/" + filename].encode("utf-8")
+    return (Path(__file__).parent.parent / "web" / filename).read_bytes()
 
 
 def data_root():
@@ -425,7 +462,7 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
         if stats_child is None and time.monotonic() >= stats_retry[0]:
             stats_retry[0] = time.monotonic() + 60
             try:
-                stats_child = subprocess.Popen([sys.executable, str(Path(__file__).with_name("analytics.py")), str(directory)],
+                stats_child = subprocess.Popen([sys.executable, str(Path(__file__)), "--analytics-worker", str(directory)],
                                                env=dict(os.environ, OUTBOUND_SPAM_SERVICE="1"))
             except OSError as exc:
                 audit("estadisticas_arranque_error", error=str(exc))
@@ -579,3 +616,12 @@ def uninstall_service(config, commands):
     path.unlink()
     commands.run("systemctl", ["daemon-reload"])
     return "Servicio retirado; se conserva estado, bloqueos y retenciones"
+
+
+install_bundled_modules()
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3 or sys.argv[1] != "--analytics-worker":
+        raise SystemExit("Uso interno: runtime.py --analytics-worker DIRECTORIO")
+    import analytics
+    analytics.worker(sys.argv[2])

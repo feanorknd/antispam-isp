@@ -1,10 +1,10 @@
 # Outbound Spam Monitor
 
-Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Rama de pruebas **1.5**, versión **1.5.1**. La línea estable permanece en `main` / release **1.3.4**.
+Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión estable **2.0.0**, rama **`main`**.
 
-**1.5.0 añade histórico SQLite de 60 días y dashboard dinámico**, con estadísticas de cuentas ignoradas, filtros por usuario, origen, destino y periodo. El trabajador es independiente del análisis y recupera automáticamente el histórico ante corrupción. [Panel, Nginx, instalación desde 1.3.4 y retorno](docs/DASHBOARD.md). El paquete de pruebas se instala con su `install.sh`; el `--upgrade` estable no selecciona esta rama.
+**2.0 añade histórico SQLite de 60 días y dashboard dinámico**, con estadísticas de cuentas ignoradas, filtros por usuario, origen, destino y periodo. El trabajador es independiente del análisis y recupera automáticamente el histórico ante corrupción. Incluye escala Y entera, tiempos del trabajador y todas las columnas de las tablas alineadas a la izquierda. [Panel, Nginx y diagnóstico](docs/DASHBOARD.md).
 
-**1.5.1 corrige las etiquetas repetidas del eje Y** y añade tiempos del último lote estadístico con actividad, conservados durante los sondeos en reposo. Véase [RELEASE_1.5.1.md](docs/RELEASE_1.5.1.md).
+**Actualización directa desde 1.3.x mediante `--upgrade`**, sin instalar versiones intermedias: completa las variables ausentes del `.conf`, conserva sus valores, estado y acciones, y reanuda el servicio si estaba activo. El dashboard queda disponible en el mismo puerto, bajo `/dashboard/`. [Notas del release 2.0.0](docs/RELEASE_2.0.0.md).
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
 
@@ -29,7 +29,7 @@ VERSION                       Versión de la distribución
 
 ## Instalación y actualización
 
-Descargar `outbound-spam-1.3.2.tar.gz` y `SHA256SUMS` del [release 1.3.2](https://github.com/feanorknd/antispam-isp/releases/tag/v1.3.2), comprobar el checksum, extraer y ejecutar:
+Descargar `outbound-spam-2.0.0.tar.gz` y `SHA256SUMS` del [release 2.0.0](https://github.com/feanorknd/antispam-isp/releases/tag/v2.0.0), comprobar el checksum, extraer y ejecutar:
 
 ```bash
 sudo ./install.sh --install-deps
@@ -83,7 +83,7 @@ Empezar por [docs/README.md](docs/README.md) y [la instalación](docs/INSTALLATI
 - [Resultado con dominio remitente y avisos cada seis horas](docs/SIMULATION_0.2.0.md)
 - [Ajustes de Postfix, relays selectivos y recomendaciones](docs/POSTFIX.md)
 - [Servicio systemd y edición con nano](docs/SERVICE.md)
-- [Dashboard e histórico 1.5: instalación, Nginx y recuperación](docs/DASHBOARD.md)
+- [Dashboard e histórico: instalación, Nginx y recuperación](docs/DASHBOARD.md)
 - [Recuperación de SQLite](docs/RECOVERY.md)
 - [Releases e instalación automática](docs/UPGRADE.md)
 - [Versiones y compatibilidad](docs/VERSIONS.md)

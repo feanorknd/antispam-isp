@@ -2,18 +2,18 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-> **Rama de pruebas 1.5:** para instalar el tar.gz 1.5.0 desde 1.3.4, configurar Nginx o volver a estable, seguir [DASHBOARD.md](DASHBOARD.md). Se usa el instalador del paquete candidato; el actualizador estable no selecciona esta rama.
+> **2.0.0 estable:** se actualiza directamente desde 1.3.0–1.3.4 con su propio `--upgrade`. Se completa el `.conf`, se conserva el estado y se reanuda el servicio con histórico/dashboard habilitados por defecto. Detalles: [RELEASE_2.0.0.md](RELEASE_2.0.0.md) y [DASHBOARD.md](DASHBOARD.md).
 
-## Instalación nueva desde el release 1.3.4
+## Instalación nueva desde el release 2.0.0
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.4/outbound-spam-1.3.4.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v1.3.4/SHA256SUMS
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.0.0/outbound-spam-2.0.0.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.0.0/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf outbound-spam-1.3.4.tar.gz
-sudo ./outbound-spam-1.3.4/install.sh --install-deps
+tar -xzf outbound-spam-2.0.0.tar.gz
+sudo ./outbound-spam-2.0.0/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
@@ -57,6 +57,16 @@ Cuando hay una versión más moderna:
 Al preparar 1.2.2 se añaden al final de la configuración `status_http_host=127.0.0.1` y `status_http_port=23456` si faltan. Se preservan los valores existentes. El servicio debe estar instalado y activo; el upgrade conserva su estado activo/parado. Retirar cualquier programación antigua. Si el puerto está ocupado el servicio no podrá arrancar.
 
 Desde el actualizador 1.0.2 se revisa también la definición systemd existente. Una unidad propia intacta se actualiza con la plantilla del candidato si declara `service_unit_api=1`; se guarda su copia y se ejecuta `daemon-reload`. Se preservan `ExecStart` (incluidos config/ruta de estado), el estado parado/activo y los archivos `.service.d/`. Una unidad base personalizada se conserva y se informa de ello. Si falla `daemon-reload` antes del arranque nuevo se restaura la definición anterior junto con código/estado.
+
+### Histórico y dashboard: salto directo a 2.0.0
+
+El propio `--upgrade` de los paquetes publicados 1.3.0, 1.3.1, 1.3.2, 1.3.3 y 1.3.4 puede validar y desplegar 2.0.0. No hace falta actualizar antes el instalador ni pasar por 1.5. El paquete conserva los nombres de componentes originales; el trabajador, la API y los recursos web se integran dentro de `lib/runtime.py`, con sus hashes declarados en el manifiesto. Los fuentes legibles siguen separados en Git.
+
+La preparación candidata incorpora `analytics_enabled=true` y `analytics_outbox_mb=64` si faltan, además de cualquier variable anterior ausente. Respeta valores ya definidos, incluidas la desactivación explícita de estadísticas, host/puerto y acciones de protección. El esquema operativo sigue siendo 4; el histórico nuevo utiliza una SQLite independiente y empieza con la nueva captura. Un histórico de las pruebas 1.5.x se conserva.
+
+Al reanudarse el servicio, arranca automáticamente un único trabajador y el panel responde en `http://127.0.0.1:23456/dashboard/` (o host/puerto configurados). No se ejecutan cambios de contraseña, avisos ni operaciones de cola durante la preparación. Si el servicio estaba parado, permanece parado hasta que el administrador lo arranque.
+
+La raíz HTTP de estado y Monit se conservan. Para publicar el dashboard bajo `/spam-status/` se necesita el bloque de proxy descrito en [DASHBOARD.md](DASHBOARD.md#nginx-conservar-spam-status-y-añadir-spam-status); un include antiguo con solo `location = /spam-status` sigue sirviendo únicamente el estado. El actualizador no reescribe configuraciones Nginx ajenas.
 
 ### Dominio registrable de webs: corrección 1.3.3
 

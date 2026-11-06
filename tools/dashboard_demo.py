@@ -8,10 +8,11 @@ import sys
 import time
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "lib"))
+CODE = Path(os.environ.get("OUTBOUND_SPAM_DEMO_CODE", str(ROOT)))
+sys.path.insert(0, str(CODE / "lib"))
+import runtime
 import analytics
 import outbound_spam as m
-import runtime
 
 
 def main():

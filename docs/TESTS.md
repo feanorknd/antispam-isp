@@ -4,7 +4,9 @@ Los directorios de pruebas y datos de validación se conservan **fuera del repos
 
 ## Pruebas locales
 
-Rama experimental 1.5: ver [RELEASE_1.5.0.md](RELEASE_1.5.0.md) para el histórico, corrupción aislada, integración Nginx, actualización real desde el paquete publicado 1.3.4, retorno y presupuesto de CPU. Herramientas: `tools/test_analytics.py`, `tools/test_dashboard_proxy.py`, `tools/test_release150.py` y `tools/benchmark_analytics.py`.
+Versión estable 2.0: ver [RELEASE_2.0.0.md](RELEASE_2.0.0.md) para histórico, corrupción aislada, integración Nginx, actualizadores publicados 1.3.0–1.3.4 y presupuesto de CPU. Herramientas: `tools/test_release200.py`, `tools/test_analytics.py`, `tools/test_dashboard_proxy.py`, `tools/test_release150.py` y `tools/benchmark_analytics.py`. La matriz 1.3.x ejecuta el CLI antiguo y arranca el demonio real tras el upgrade. `LIVE_RELEASE=1` permite comprobar además la descarga oficial después de publicar, sin sustituir el downloader.
+
+Resultados 2.0.0: [TEST_RESULTS_2.0.0.json](TEST_RESULTS_2.0.0.json). Los once escenarios de upgrade por entorno incluyen los cinco releases 1.3.x con servicio activo/parado y la desactivación explícita de estadísticas. Las descargas se sustituyen por los assets del candidato para la matriz aislada; los validadores, configuración y CLI de los paquetes anteriores son reales. Se comprueba además el nuevo demonio y el contenido integrado del dashboard.
 
 Validación local 1.3.4 (2026-11-04): **224 pruebas: 205 correctas y 19 omitidas por requisitos del entorno**, sin fallos. Además, 18 de dominios/PSL, 11 de configuración y 9 HTTP públicas correctas. Incluye presentación de ayuda, salida sin argumentos, color y fallback, separadores de casos prácticos, inspección por nombre/UID y regresiones de distribución/upgrade con comandos simulados. Detalles: [RELEASE_1.3.4.md](RELEASE_1.3.4.md).
 

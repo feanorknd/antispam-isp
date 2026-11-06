@@ -4,13 +4,18 @@
 
 | Elemento | Versión |
 |---|---|
-| Aplicación | 1.3.4 |
+| Aplicación | 2.0.0 |
 | Esquema SQLite privado (`user_version`) | 4 |
+| Esquema SQLite estadístico, independiente | 1 |
 | Python mínimo | 3.8 |
 | Bash utilizado | 5.0 o posterior en las distribuciones verificadas |
 | Postfix requerido | 3.1+ para `postqueue -j`; integración con `postfix-sqlite` |
 
 `VERSION` y `--version` deben coincidir; las pruebas lo comprueban. Las futuras modificaciones incompatibles del esquema deberán introducir una migración y actualizar este documento.
+
+## Distribución 2.0.0
+
+Publica en `main` el histórico de 60 días y dashboard probados en 1.5.x. Conserva Python 3.8+, esquema operativo 4, `upgrade_api=1` y `service_unit_api=1`. Las versiones 1.3.0–1.3.4 actualizan directamente con su `--upgrade`, añadiendo automáticamente todas las variables ausentes. Los módulos nuevos y recursos web se integran en `lib/runtime.py` para respetar la lista de componentes de esos validadores; el manifiesto conserva sus hashes y los fuentes separados permanecen en Git. Detalles: [RELEASE_2.0.0.md](RELEASE_2.0.0.md).
 
 ## Distribución 1.3.4
 

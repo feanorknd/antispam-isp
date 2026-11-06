@@ -1,5 +1,16 @@
 # Cambios efectuados
 
+## 2.0.0 — 2026-11-06
+
+- Histórico SQLite independiente de 60 días para SMTP AUTH y sendmail, incluidas cuentas ignoradas sin activar su protección.
+- Dashboard dinámico, filtros múltiples por usuario/origen/destino/periodo, tablas locales/remotas y cronología de bloqueos, rechazos y retenciones.
+- Eje Y con intervalos enteros sin etiquetas repetidas; todas las cabeceras y celdas de tablas alineadas a la izquierda.
+- Trabajador único, independiente y de prioridad reducida; transferencia incremental por SQL, lotes recuperables y tiempos conservados durante reposo.
+- WAL/FULL, copias verificadas y recuperación automática del histórico sin interrumpir el analizador operativo.
+- Mismo puerto HTTP y raíz JSON; recursos y API compatibles con el prefijo Nginx `/spam-status/`.
+- Paquete compatible con `--upgrade` de 1.3.0–1.3.4: componentes nuevos integrados en `runtime.py`, hashes internos, configuración completa y conservación del estado activo/parado.
+- Se mantienen Python 3.8+, esquema operativo 4 y API de upgrade/systemd 1. La rama `1.5` conserva las pruebas y `1.3` la línea anterior.
+
 ## 1.3.4 — 2026-11-04
 
 - Ayuda reorganizada en instalación, aspectos generales, gestión de incidencias, customizaciones y casos prácticos, con separadores de líneas y explicaciones debajo de cada comando.

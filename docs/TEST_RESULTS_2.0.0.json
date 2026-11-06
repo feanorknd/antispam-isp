@@ -1,0 +1,32 @@
+{
+  "version": "2.0.0",
+  "date": "2026-11-06",
+  "local_regression": {"total": 224, "passed": 205, "skipped": 19, "failed": 0, "skip_reason": "Pruebas que requieren root, contenedor y servicios nativos"},
+  "public_suites": {"analytics": 18, "http": 9, "configuration": 11, "websites": 18, "nginx_proxy": 1, "failed": 0},
+  "released_upgraders": {
+    "versions": ["1.3.0", "1.3.1", "1.3.2", "1.3.3", "1.3.4"],
+    "environments": ["Ubuntu Focal / Python 3.8.10", "Ubuntu Noble / Python 3.12.3"],
+    "test_methods_per_environment": 8,
+    "upgrade_scenarios_per_environment": 11,
+    "service_states": ["active", "stopped"],
+    "actual_legacy_cli": true,
+    "network_substitution": "Solo se sustituye el downloader HTTPS por assets/metadata locales del candidato; validación y despliegue del CLI publicado sin modificar",
+    "actual_new_daemon_and_worker": true,
+    "checks": ["Variables completas y valores previos conservados", "Caché validada", "Estado operativo e identidad de instalación", "Arranque automático si estaba activo", "Servicio parado conservado", "Dashboard/API/assets integrados", "Destinos mixtos local/remoto", "Cuentas ignoradas en estadísticas", "Repetición idempotente", "Desactivación explícita del histórico"],
+    "failed": 0
+  },
+  "packed_distribution": {"old_validators_checked": 5, "bundle_hash_mismatch_rejected": true, "new_component_paths_in_archive": false},
+  "preview_upgrade_and_recovery": {"from": "1.5.0", "environment": "Ubuntu Noble / Python 3.12", "preview_history_preserved": true, "corruption_while_daemon_active": true, "monitor_continued": true, "automatic_history_recovery": true, "return_to_preview_verified": true},
+  "browser": {"source": "Dashboard servido con el runtime integrado del tar.gz 2.0.0", "headers_checked": 23, "values_checked": 139, "numeric_values_checked": 36, "all_text_align": "left"},
+  "synthetic_performance": {
+    "reference": "v1.3.4", "messages": 10000, "repeats": 5, "ignored_percent": 5, "local_submission_percent": 20,
+    "baseline_total_cpu_seconds": 1.247883653, "candidate_total_cpu_seconds": 1.431571147,
+    "cpu_overhead_percent": 14.719921489347353,
+    "baseline_monitor_wall_seconds": 1.26543589, "candidate_monitor_wall_seconds": 1.082656741,
+    "monitor_wall_change_percent": -14.443967524862344,
+    "baseline_benchmark_peak_rss_kib": 41428, "candidate_benchmark_peak_rss_kib": 44996,
+    "includes": ["Parser/evaluación", "Captura y sincronización", "Mantenimiento/copia", "Tres consultas de 60 días"],
+    "limits": "Datos sintéticos; RSS del proceso de medición, no suma de procesos de producción; no garantiza el mismo porcentaje para cualquier perfil de tráfico"
+  },
+  "static_checks": ["bash -n", "shellcheck -S warning", "node --check", "git diff --check"]
+}

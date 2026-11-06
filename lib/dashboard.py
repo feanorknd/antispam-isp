@@ -166,7 +166,8 @@ def serve(handler, directory):
     try:
         if relative in ASSETS:
             filename, kind = ASSETS[relative]
-            body = (Path(__file__).parent.parent / "web" / filename).read_bytes()
+            from runtime import dashboard_asset
+            body = dashboard_asset(filename)
         elif relative.startswith("api/"):
             if len(parsed.query) > 16384:
                 raise ValueError("Consulta demasiado larga")
