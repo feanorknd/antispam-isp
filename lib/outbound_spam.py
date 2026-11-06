@@ -2142,11 +2142,11 @@ def cli():
     mode.add_argument("--status", action="store_true", help="Mostrar estado y fechas locales: código 0 sano/calentamiento, 1 alerta, 2 error")
     mode.add_argument("--doctor", action="store_true", help="Comprobar dependencias y configuración, sin acciones de contención")
     mode.add_argument("--inspect-local-user", metavar="UID_O_USUARIO", help="Consultar identidad UNIX y dominios ISPConfig; acepta nombre (web6) o UID (5009), sin enviar ni bloquear")
-    mode.add_argument("--install-local-guard", action="store_true", help="Instalar ACL hash de sendmail/postdrop y recargar Postfix")
+    mode.add_argument("--install-local-guard", action="store_true", help="Instalar solo la ACL hash de sendmail/postdrop y recargar Postfix; incluido en --install-postfix-guard si monitor_local=true (predeterminado)")
     mode.add_argument("--uninstall-local-guard", action="store_true", help="Restaurar authorized_submit_users; requiere webs desbloqueadas")
     mode.add_argument("--install-monit", action="store_true", help="Instalar Spam_Status, validar y reiniciar Monit")
     mode.add_argument("--uninstall-monit", action="store_true", help="Retirar solo el monitor Spam_Status y su comprobador")
-    mode.add_argument("--install-postfix-guard", action="store_true", help="Instalar/migrar el bloqueo por SASL/destinatario; validar y reiniciar Postfix")
+    mode.add_argument("--install-postfix-guard", action="store_true", help="Instalar/migrar el bloqueo SMTP AUTH por SASL/destinatario; validar y reiniciar Postfix. También instala/configura --install-local-guard si monitor_local=true (predeterminado); no es necesario ejecutarlo aparte")
     mode.add_argument("--uninstall-postfix-guard", action="store_true", help="Restaurar restricciones anteriores; requiere no tener cuentas bloqueadas")
     operations = {
         "list-held": "Listar los mensajes que el monitor tiene registrados como HOLD de la cuenta",

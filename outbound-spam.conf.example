@@ -32,6 +32,8 @@ foreign_sender_divisor=4           # 100 pasa a 25 si hay externos con remitente
 sample_count=10
 
 # Acciones independientes. Activar block_smtp requiere --install-postfix-guard.
+# --install-postfix-guard instala también la ACL local si monitor_local=true (por defecto).
+# No requiere --install-local-guard aparte; este instala solo la protección local.
 notify=true
 block_smtp=false
 hold_queue=false

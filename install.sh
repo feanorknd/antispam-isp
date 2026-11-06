@@ -7,7 +7,9 @@ if [[ " ${*} " == *' --help '* || " ${*} " == *' -h '* ]]; then
     printf '%s\n' 'Uso: sudo ./install.sh [--target /root/scripts] [--config /ruta/privada.conf] [--install-deps]' \
         'Instala el programa; conserva configuración, estado y restricciones.' \
         '--install-deps instala únicamente postfix-sqlite, sin recomendaciones.' \
-        'Después configure el archivo .conf y ejecute --doctor, --install-postfix-guard, --install-service y --install-monit según corresponda.'
+        'Después configure el archivo .conf y ejecute --install-postfix-guard, --doctor, --install-service y --install-monit según corresponda.' \
+        '--install-postfix-guard instala también la ACL local de sendmail/postdrop si monitor_local=true (predeterminado).' \
+        'No necesita ejecutar --install-local-guard aparte; ese comando permite instalar solo la protección local.'
     exit 0
 fi
 (( EUID == 0 )) || { printf '%s\n' 'La instalación requiere root.' >&2; exit 2; }

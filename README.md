@@ -30,11 +30,13 @@ Descargar `outbound-spam-1.3.2.tar.gz` y `SHA256SUMS` del [release 1.3.2](https:
 ```bash
 sudo ./install.sh --install-deps
 sudo nano /root/scripts/outbound-spam.conf
-sudo /root/scripts/outbound-spam.sh --install-local-guard
+sudo /root/scripts/outbound-spam.sh --install-postfix-guard
 sudo /root/scripts/outbound-spam.sh --doctor
 ```
 
-`--install-deps` instala únicamente `postfix-sqlite`, sin recomendaciones; Python y Postfix deben existir previamente. La configuración nueva empieza con avisos desactivados. La guía indica cómo activar el guard, el servicio y Monit. Para actualizar después:
+**`--install-postfix-guard` instala/configura la protección SMTP AUTH y también la protección local de sendmail/postdrop si `monitor_local=true`, que es el valor predeterminado. No hace falta ejecutar `--install-local-guard` aparte.** Este último comando sirve para instalar solo la protección local. Con `monitor_local=false`, `--install-postfix-guard` instala únicamente el guard SMTP. Instalar los guards prepara los mecanismos; los bloqueos automáticos dependen del monitor y de `block_smtp`/`block_local`.
+
+`--install-deps` instala únicamente `postfix-sqlite`, sin recomendaciones; Python y Postfix deben existir previamente. La configuración nueva empieza con avisos desactivados. La guía indica cómo activar las acciones, el servicio y Monit. Para actualizar después:
 
 ```bash
 sudo /root/scripts/outbound-spam.sh --upgrade

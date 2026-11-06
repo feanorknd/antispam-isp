@@ -69,7 +69,11 @@ La detección sigue siendo periódica, no una cuota atómica durante la aceptaci
 
 ## Instalación, upgrade y recuperación
 
-`--upgrade` prepara automáticamente el parámetro y el mapa, ejecuta `postfix check` y `postfix -c RUTA reload`. Es idempotente. También instala esta integración `--install-postfix-guard` cuando `monitor_local=true`. Para administrarla por separado:
+**`--install-postfix-guard` instala/configura también esta protección local cuando `monitor_local=true`, que es el valor predeterminado. No hace falta ejecutar después `--install-local-guard`: la ACL y el mapa quedan preparados por el mismo comando.** Si ya están instalados, verifica la integración. Con `monitor_local=false`, ese comando instala únicamente el guard SMTP AUTH.
+
+`--install-local-guard` sirve para instalar solo la protección de sendmail/postdrop, sin instalar el guard SMTP AUTH. La instalación prepara el mecanismo; la detección y los nuevos bloqueos automáticos locales dependen de `monitor_local` y `block_local`.
+
+`--upgrade` prepara automáticamente el parámetro y el mapa, ejecuta `postfix check` y `postfix -c RUTA reload`. Es idempotente. Para administrar la integración local por separado:
 
 ```bash
 /root/scripts/outbound-spam.sh --install-local-guard

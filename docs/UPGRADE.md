@@ -22,14 +22,15 @@ Editar esa configuración, establecer las direcciones reales y habilitar las acc
 
 ```bash
 nano /root/scripts/outbound-spam.conf
-/root/scripts/outbound-spam.sh --install-local-guard
-/root/scripts/outbound-spam.sh --doctor
 /root/scripts/outbound-spam.sh --install-postfix-guard
+/root/scripts/outbound-spam.sh --doctor
 /root/scripts/outbound-spam.sh --configure-postfix
 /root/scripts/outbound-spam.sh --install-service
 /root/scripts/outbound-spam.sh --install-monit
 systemctl status outbound-spam.service
 ```
+
+**`--install-postfix-guard` instala/configura tanto el guard SMTP AUTH como la ACL local de sendmail/postdrop si `monitor_local=true` (valor predeterminado). No hay que ejecutar `--install-local-guard` aparte.** Usar este último solo para instalar la protección local por separado. Con `monitor_local=false`, `--install-postfix-guard` instala únicamente el guard SMTP. Los bloqueos automáticos dependen del monitor y de las acciones `block_smtp`/`block_local` elegidas en la configuración.
 
 El paquete incluye el instalador, los dos scripts, todos los módulos Python/Bash, ejemplo de configuración, manifiesto con hashes y documentación. No incluye pruebas, logs, bases de datos ni copias de servidores.
 
