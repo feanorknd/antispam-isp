@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Actividad de correo · Outbound Spam</title>
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <header><div><p class="eyebrow">OUTBOUND SPAM · 1.5 PRUEBAS</p><h1>Actividad de correo</h1><p>SMTP autenticado y envíos locales · Histórico de 60 días</p></div><button id="refresh" type="button">Actualizar</button></header>
+  <main>
+    <section class="panel filters" aria-label="Filtros de actividad">
+      <div class="filter-grid">
+        <label>Periodo<select id="period"><option value="900">Últimos 15 minutos</option><option value="3600">Última hora</option><option value="86400" selected>Últimas 24 horas</option><option value="604800">Últimos 7 días</option><option value="2592000">Últimos 30 días</option><option value="5184000">Últimos 60 días</option><option value="custom">Personalizado</option></select></label>
+        <label>Agrupación<select id="bucket"><option value="auto">Automática</option><option value="minute">Minutos</option><option value="hour">Horas</option><option value="day">Días</option></select></label>
+        <label>Origen<select id="origin"><option value="all">SMTP y sendmail</option><option value="smtp">SMTP autenticado</option><option value="local">Sistema / sendmail</option></select></label>
+        <label>Destino<select id="destination"><option value="all">Todos los destinos</option><option value="remote">Remotos</option><option value="local">Locales</option><option value="unknown">Sin clasificar</option></select></label>
+        <label>Cuentas ignoradas<select id="ignored"><option value="all">Incluir todas</option><option value="exclude">Excluir ignoradas</option><option value="only">Solo ignoradas</option></select></label>
+        <label>Métrica de la gráfica<select id="metric"><option value="recipients">Destinatarios aceptados</option><option value="messages">Mensajes aceptados</option><option value="deliveries">Entregas notificadas</option></select></label>
+      </div>
+      <div id="custom-range" class="range" hidden><label>Desde (hora del navegador)<input id="from" type="datetime-local"></label><label>Hasta<input id="to" type="datetime-local"></label><button id="apply" type="button">Aplicar periodo</button></div>
+      <details id="user-filter"><summary>Seleccionar usuarios <span id="selected-count">· Todos</span></summary>
+        <div class="user-layout"><div><label>Buscar cuenta, usuario o dominio<input id="user-search" type="search" placeholder="Email, web6, local:5009…" autocomplete="off"></label><label>Usuarios registrados (selección múltiple)<select id="users" multiple size="7" aria-describedby="user-help"></select></label><button id="more-users" type="button" hidden>Cargar más usuarios</button></div><div><p id="user-help">El listado incluye todo el histórico, aunque no haya actividad en el periodo. Use Ctrl/Cmd para seleccionar varios.</p><button id="clear-users" type="button">Todos los usuarios</button><div id="selected-users" class="chips"></div></div></div>
+      </details>
+    </section>
+    <p id="notice" role="status" aria-live="polite">Cargando histórico…</p>
+    <p id="error" class="error" role="alert" hidden></p>
+    <section id="cards" class="cards" aria-label="Resumen del periodo"></section>
+    <section class="panel chart-panel"><div class="section-heading"><h2>Evolución de envíos</h2><span id="range-label"></span></div>
+      <div class="legend"><span class="remote">Remotos</span><span class="local">Locales</span><span class="unknown">Sin clasificar</span><span class="rejected">Rechazados</span><span class="held">Nuevas retenciones</span><span>▼ Bloqueo · ▲ Desbloqueo</span></div>
+      <div class="chart-scroll"><svg id="chart" viewBox="0 0 1100 320" role="img" aria-label="Evolución temporal de los envíos"></svg></div>
+      <p id="chart-detail">Pase el cursor para ver cifras. Pulse un tramo para analizarlo.</p>
+      <p class="muted">Aceptados: una unidad por destinatario o mensaje, sin sumar reintentos. Los mensajes mixtos aparecen en ambas series. Retenciones y rechazos son eventos, no nuevos envíos. «Entregado» significa aceptado por el siguiente transporte, no recepción final en el buzón remoto.</p>
+    </section>
+    <section class="panel"><div class="section-heading"><h2>Actividad por usuario</h2><div><button id="previous" type="button" disabled>Anterior</button><button id="next" type="button" disabled>Siguiente</button></div></div><p class="muted">Hasta 100 filas por página, ordenadas por destinatarios. Estados de los destinatarios aceptados en el periodo; las entregas posteriores actualizan su estado.</p>
+      <h3>Destinos remotos</h3><div id="remote-table" class="table-scroll"></div>
+      <h3>Destinos locales</h3><div id="local-table" class="table-scroll"></div>
+      <details><summary>Destinos sin clasificar</summary><div id="unknown-table" class="table-scroll"></div></details>
+    </section>
+    <section class="panel"><h2>Bloqueos, retenciones y rechazos</h2><p class="muted">Últimos 100 eventos del periodo y usuarios seleccionados. Fin de retención significa que el mensaje dejó de estar en HOLD; no confirma por sí solo su entrega.</p><div id="events" class="table-scroll"></div></section>
+    <footer>Sin recursos externos · <span id="timezone"></span> · Refresco cada 60 segundos mientras la pestaña esté visible</footer>
+  </main>
+</body>
+</html>

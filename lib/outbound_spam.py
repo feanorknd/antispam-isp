@@ -14,6 +14,7 @@ import gzip
 import hashlib
 import ipaddress
 import json
+from json.encoder import encode_basestring_ascii
 import os
 from pathlib import Path
 import re
@@ -30,7 +31,7 @@ from postfix_settings import restart_postfix, MonitorError, LocalGuard, Websites
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "1.3.4"
+VERSION = "1.5.1"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
 TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|pickup|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
@@ -134,12 +135,15 @@ class Config:
         self.v.setdefault("status_http_port", 23456)
         self.v.setdefault("monitor_local", True)
         self.v.setdefault("block_local", True)
+        self.v.setdefault("analytics_enabled", True)
+        self.v.setdefault("analytics_outbox_mb", 64)
         if self.v.get("systemctl_bin") == "/usr/bin/systemctl" and not os.path.exists("/usr/bin/systemctl") and os.path.exists("/bin/systemctl"):
             self.v["systemctl_bin"] = "/bin/systemctl"
         integers = ("max_sent", "time_period", "max_read_bytes", "command_timeout", "stale_after",
                     "rotation_grace", "retention_days", "max_action_age", "reminder_interval",
                     "sample_count", "smtp_port", "ispconfig_server_id", "foreign_sender_divisor", "postfix_headroom",
-                    "run_interval", "lock_wait", "backup_interval", "integrity_interval", "backup_copies", "status_http_port")
+                    "run_interval", "lock_wait", "backup_interval", "integrity_interval", "backup_copies", "status_http_port",
+                    "analytics_outbox_mb")
         for k in integers:
             try:
                 self.v[k] = int(self.v[k])
@@ -154,7 +158,7 @@ class Config:
             raise MonitorError("status_http_host debe ser una dirección IPv4")
         if self.v["status_http_port"] > 65535:
             raise MonitorError("status_http_port debe estar entre 1 y 65535")
-        for k in ("notify", "block_smtp", "hold_queue", "reset_password", "monitor_local", "block_local"):
+        for k in ("notify", "block_smtp", "hold_queue", "reset_password", "monitor_local", "block_local", "analytics_enabled"):
             if str(self.v.get(k)).lower() not in ("true", "false"):
                 raise MonitorError("Configuración: booleano true/false requerido: " + k)
             self.v[k] = str(self.v[k]).lower() == "true"
@@ -275,6 +279,7 @@ def mysql_query(config, commands, sql):
 class Store:
     def __init__(self, path):
         self.recovery = None
+        self.analytics = None
         private_file(path)
         self.path = Path(path)
         self.db = sqlite3.connect(str(path), timeout=5)
@@ -332,6 +337,8 @@ class Store:
         return self.db.execute("SELECT * FROM messages WHERE qid=? AND removed=0 ORDER BY id DESC LIMIT 1", (qid,)).fetchone()
 
     def sender(self, mid, account, sender):
+        if self.analytics:
+            self.analytics.dirty.add(mid)
         a, b = mail_domain(account), mail_domain(sender)
         foreign = int(bool(a and b and a != b))
         if is_local(account):
@@ -347,6 +354,8 @@ class Store:
         return row is None or row[0] is None or now - row[0] >= max(MIN_NOTICE_INTERVAL, interval)
 
     def recipient(self, mid, address, external=None, delivery=None, line=None):
+        if self.analytics:
+            self.analytics.dirty.add(mid)
         # El dominio se normaliza; la parte local se conserva para no fusionar destinatarios.
         local, sep, domain = address.rpartition("@")
         address = local + sep + domain.casefold() if sep else address
@@ -392,6 +401,7 @@ class Parser:
         self.last_time = 0
         self.first_time = None
         self.lines = 0
+        self.sample_counts = {}
 
     def session(self, line):
         match = SMTP_SESSION.match(line)
@@ -423,7 +433,7 @@ class Parser:
         self.lines += 1
         if "postfix/" not in line:
             return
-        connection = self.session(line)
+        connection = self.session(line) if "smtpd[" in line else None
         match = TAG.search(line) or CUSTOM_TAG.search(line)
         if not match:
             return
@@ -437,6 +447,8 @@ class Parser:
             raise MonitorError("El log contiene fechas futuras; revise el reloj o use --now en replay")
         auth = re.search(r"(?:^|, )sasl_username=([^,\s]+)", text)
         pickup = re.fullmatch(r"uid=(\d+) from=<(.*?)>(?: orig_id=[A-Za-z0-9]+)?", text) if service == "pickup" else None
+        if self.s.analytics:
+            self.s.analytics.observe(when, service, qid, text, auth, pickup)
         if pickup and self.c["monitor_local"]:
             account = "local:" + str(int(pickup.group(1)))
             if account in self.c["ignore"]:
@@ -469,13 +481,17 @@ class Parser:
                 self.s.db.execute("UPDATE messages SET removed=1 WHERE id=?", (current["id"],))
             ip = re.search(r"client=.*?\[([^\]]+)\]", text)
             created = self.s.db.execute("INSERT INTO messages(qid,account,created,ip,auth_line) VALUES (?,?,?,?,?)",
-                                       (qid, account, when, ip.group(1) if ip else "?", line))
+                                        (qid, account, when, ip.group(1) if ip else "?", line))
+            if self.s.analytics:
+                self.s.analytics.dirty.add(created.lastrowid)
             self.pending(created.lastrowid, connection, when)
             return
         message = self.s.active(qid)
         if not message:
             return
         mid = message["id"]
+        if self.s.analytics:
+            self.s.analytics.dirty.add(mid)
         if service == "qmgr":
             if text == "removed":
                 self.s.db.execute("UPDATE messages SET removed=1 WHERE id=?", (mid,))
@@ -518,10 +534,19 @@ class Parser:
                 elif service in self.c["local_transports"]:
                     external = 0
                 self.s.recipient(mid, m.group(1), external, m.group(2), line)
-        samples = json.loads(message["samples"])
-        if len(samples) < 8:
-            samples.append(line[:4096])
-            self.s.db.execute("UPDATE messages SET samples=? WHERE id=?", (json.dumps(samples), mid))
+        # No decodificar y recodificar todas las evidencias en cada línea del mismo mensaje.
+        count = self.sample_counts.get(mid)
+        if count is None:
+            if len(self.sample_counts) >= 512:
+                self.sample_counts.clear()
+            count = 0 if message["samples"] == "[]" else len(json.loads(message["samples"]))
+        if count < 8:
+            samples = message["samples"].rstrip()[:-1] + ("," if count else "") + encode_basestring_ascii(line[:4096]) + "]"
+            self.s.db.execute("UPDATE messages SET samples=? WHERE id=?", (samples, mid))
+            count += 1
+        self.sample_counts[mid] = count
+        if service == "qmgr" and text == "removed":
+            self.sample_counts.pop(mid, None)
 
 
 class LogReader:
@@ -2142,11 +2167,11 @@ def cli():
     mode.add_argument("--status", action="store_true", help="Mostrar estado y fechas locales: código 0 sano/calentamiento, 1 alerta, 2 error")
     mode.add_argument("--doctor", action="store_true", help="Comprobar dependencias y configuración, sin acciones de contención")
     mode.add_argument("--inspect-local-user", metavar="UID_O_USUARIO", help="Consultar identidad UNIX y dominios ISPConfig; acepta nombre (web6) o UID (5009), sin enviar ni bloquear")
-    mode.add_argument("--install-local-guard", action="store_true", help="Instalar ACL hash de sendmail/postdrop y recargar Postfix")
+    mode.add_argument("--install-local-guard", action="store_true", help="Instalar solo la ACL hash de sendmail/postdrop y recargar Postfix; incluido en --install-postfix-guard si monitor_local=true (predeterminado)")
     mode.add_argument("--uninstall-local-guard", action="store_true", help="Restaurar authorized_submit_users; requiere webs desbloqueadas")
     mode.add_argument("--install-monit", action="store_true", help="Instalar Spam_Status, validar y reiniciar Monit")
     mode.add_argument("--uninstall-monit", action="store_true", help="Retirar solo el monitor Spam_Status y su comprobador")
-    mode.add_argument("--install-postfix-guard", action="store_true", help="Instalar/migrar el bloqueo por SASL/destinatario; validar y reiniciar Postfix")
+    mode.add_argument("--install-postfix-guard", action="store_true", help="Instalar/migrar el bloqueo SMTP AUTH por SASL/destinatario; validar y reiniciar Postfix. También instala/configura --install-local-guard si monitor_local=true (predeterminado); no es necesario ejecutarlo aparte")
     mode.add_argument("--uninstall-postfix-guard", action="store_true", help="Restaurar restricciones anteriores; requiere no tener cuentas bloqueadas")
     operations = {
         "list-held": "Listar los mensajes que el monitor tiene registrados como HOLD de la cuenta",
@@ -2382,6 +2407,9 @@ def _main(parser, args):
                 raise MonitorError("No se puede mezclar estado offline y operativo")
             store.set("mode", desired_mode)
             store.db.commit()
+            if config["analytics_enabled"] and not args.prepare_upgrade:
+                from analytics import Capture
+                store.analytics = Capture(store, config)
             if args.prepare_upgrade:
                 store.persist_critical()
                 if recovery:
@@ -2438,6 +2466,9 @@ def _main(parser, args):
                 print(uninstall_guard(config, commands, store))
             elif not (args.run or args.replay):
                 print(manage(store, config, commands, args, now))
+                if store.analytics:
+                    store.analytics.finish(now)
+                    store.db.commit()
                 old = store.get("current", {})
                 summary = summarize(store, config, now, old, coverage_issues(store, config, now))
                 # No simular una ejecución correcta del analizador al administrar un incidente.
@@ -2481,11 +2512,16 @@ def _main(parser, args):
                             issues.append("pendiente de leer log: se alcanzó max_read_bytes")
                         store.set("last_success", now)
                         store.set("reader_notes", reader.notes)
+                        if store.analytics:
+                            store.analytics.finish(now)
                     if not args.replay:
                         store.persist_critical()
                         reconcile_queue_ops(store, config, commands)
                         Actions(store, config, commands, now).process()
                         reconcile_held(store, config, commands)
+                        if store.analytics:
+                            store.analytics.finish(time.time())
+                            store.db.commit()
                     issues.extend(coverage_issues(store, config, now))
                     summary = summarize(store, config, now, current, list(dict.fromkeys(issues)))
                     summary["analysis_at"] = now
@@ -2511,7 +2547,11 @@ def _main(parser, args):
                         store.db.commit()
                     # Purgar solo mensajes terminados: conservar correlación de colas antiguas/HOLD.
                     with store.db:
-                        store.db.execute("DELETE FROM messages WHERE removed=1 AND created<?", (now - config["retention_days"] * 86400,))
+                        if store.analytics:
+                            store.db.execute("DELETE FROM messages WHERE removed=1 AND created<? AND id NOT IN (SELECT mid FROM stats_dirty)",
+                                             (now - config["retention_days"] * 86400,))
+                        else:
+                            store.db.execute("DELETE FROM messages WHERE removed=1 AND created<?", (now - config["retention_days"] * 86400,))
                     if not args.quiet:
                         print(json.dumps(runtime.readable_dates(summary), ensure_ascii=False, indent=2))
                     elif summary["code"] == 2:

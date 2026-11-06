@@ -57,11 +57,11 @@ Los archivos de configuración deben pertenecer a root y tener modo `0600`. En e
 
 ## 3. Comprobar la configuración
 
-Con el acceso SQL a ISPConfig disponible e instalando primero la ACL local predeterminada:
+Con el acceso SQL a ISPConfig disponible, instalar primero los guards y comprobar la configuración:
 
 ```bash
 /root/scripts/outbound-spam.sh --version
-/root/scripts/outbound-spam.sh --install-local-guard
+/root/scripts/outbound-spam.sh --install-postfix-guard
 /root/scripts/outbound-spam.sh --doctor
 ```
 
@@ -69,15 +69,13 @@ Con el acceso SQL a ISPConfig disponible e instalando primero la ACL local prede
 
 Para clasificar destinatarios pendientes, `routing_mode=auto` utiliza `postconf` y `postmap` sobre los mapas ya configurados. Con rutas o transportes especiales, consultar [ARCHITECTURE.md](ARCHITECTURE.md).
 
-Desde 1.3.0, `--doctor` comprueba también `web_domain` y la ACL local si están activados `monitor_local`/`block_local` (ambos true por defecto). `--install-local-guard` valida y recarga Postfix. El cliente mysql y su acceso por socket deben estar disponibles. Para diagnosticar UID y dominios sin enviar correo: `--inspect-local-user web6 --sender cuenta@su-dominio.example`. Véase [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
+**`--install-postfix-guard` instala también la ACL local de sendmail/postdrop si `monitor_local=true` (valor predeterminado). No es necesario ejecutar `--install-local-guard` aparte.** Para instalar solo la protección local, usar `--install-local-guard`, que valida y recarga Postfix. Con `monitor_local=false`, `--install-postfix-guard` instala únicamente la protección SMTP AUTH.
 
-## 4. Instalar el bloqueo SMTP del plan A
+Desde 1.3.0, `--doctor` comprueba también `web_domain` y la ACL local si están activados `monitor_local`/`block_local` (ambos true por defecto). El cliente mysql y su acceso por socket deben estar disponibles. Para diagnosticar UID y dominios sin enviar correo: `--inspect-local-user web6 --sender cuenta@su-dominio.example`. Véase [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
-```bash
-/root/scripts/outbound-spam.sh --install-postfix-guard
-```
+## 4. Integración instalada y activación del bloqueo SMTP del plan A
 
-El comando:
+El comando `--install-postfix-guard` ejecutado en el paso anterior:
 
 1. Crea `/etc/postfix/outbound-spam-access.sqlite3`, inicialmente vacía.
 2. Crea `/etc/postfix/outbound-spam-access.cf`, sin contraseñas.

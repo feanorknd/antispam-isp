@@ -1,6 +1,10 @@
 # Outbound Spam Monitor
 
-Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión **1.3.4**.
+Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Rama de pruebas **1.5**, versión **1.5.1**. La línea estable permanece en `main` / release **1.3.4**.
+
+**1.5.0 añade histórico SQLite de 60 días y dashboard dinámico**, con estadísticas de cuentas ignoradas, filtros por usuario, origen, destino y periodo. El trabajador es independiente del análisis y recupera automáticamente el histórico ante corrupción. [Panel, Nginx, instalación desde 1.3.4 y retorno](docs/DASHBOARD.md). El paquete de pruebas se instala con su `install.sh`; el `--upgrade` estable no selecciona esta rama.
+
+**1.5.1 corrige las etiquetas repetidas del eje Y** y añade tiempos del último lote estadístico con actividad, conservados durante los sondeos en reposo. Véase [RELEASE_1.5.1.md](docs/RELEASE_1.5.1.md).
 
 Implementa el **plan A**: el analizador detecta el exceso y después puede bloquear nuevos envíos SMTP, retener la cola de esa cuenta y cambiar su contraseña en ISPConfig. La unidad del límite es el **destinatario externo aceptado**, incluso si el mensaje sigue pendiente. Los reintentos no vuelven a contar.
 
@@ -30,11 +34,13 @@ Descargar `outbound-spam-1.3.2.tar.gz` y `SHA256SUMS` del [release 1.3.2](https:
 ```bash
 sudo ./install.sh --install-deps
 sudo nano /root/scripts/outbound-spam.conf
-sudo /root/scripts/outbound-spam.sh --install-local-guard
+sudo /root/scripts/outbound-spam.sh --install-postfix-guard
 sudo /root/scripts/outbound-spam.sh --doctor
 ```
 
-`--install-deps` instala únicamente `postfix-sqlite`, sin recomendaciones; Python y Postfix deben existir previamente. La configuración nueva empieza con avisos desactivados. La guía indica cómo activar el guard, el servicio y Monit. Para actualizar después:
+**`--install-postfix-guard` instala/configura la protección SMTP AUTH y también la protección local de sendmail/postdrop si `monitor_local=true`, que es el valor predeterminado. No hace falta ejecutar `--install-local-guard` aparte.** Este último comando sirve para instalar solo la protección local. Con `monitor_local=false`, `--install-postfix-guard` instala únicamente el guard SMTP. Instalar los guards prepara los mecanismos; los bloqueos automáticos dependen del monitor y de `block_smtp`/`block_local`.
+
+`--install-deps` instala únicamente `postfix-sqlite`, sin recomendaciones; Python y Postfix deben existir previamente. La configuración nueva empieza con avisos desactivados. La guía indica cómo activar las acciones, el servicio y Monit. Para actualizar después:
 
 ```bash
 sudo /root/scripts/outbound-spam.sh --upgrade
@@ -77,6 +83,7 @@ Empezar por [docs/README.md](docs/README.md) y [la instalación](docs/INSTALLATI
 - [Resultado con dominio remitente y avisos cada seis horas](docs/SIMULATION_0.2.0.md)
 - [Ajustes de Postfix, relays selectivos y recomendaciones](docs/POSTFIX.md)
 - [Servicio systemd y edición con nano](docs/SERVICE.md)
+- [Dashboard e histórico 1.5: instalación, Nginx y recuperación](docs/DASHBOARD.md)
 - [Recuperación de SQLite](docs/RECOVERY.md)
 - [Releases e instalación automática](docs/UPGRADE.md)
 - [Versiones y compatibilidad](docs/VERSIONS.md)

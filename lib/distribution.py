@@ -27,6 +27,7 @@ RUNTIME = (
     "VERSION", "install.sh", "outbound-spam.sh", "outbound-spam-status.sh", "outbound-spam.conf.example",
     "lib/outbound_spam.py", "lib/postfix_settings.py", "lib/runtime.py", "lib/state_recovery.py",
     "lib/load_config.sh", "lib/distribution.py",
+    "lib/analytics.py", "lib/dashboard.py", "web/index.html", "web/app.js", "web/style.css",
 )
 ROOT_FILES = {"README.md"} | set(RUNTIME)
 MAX_ARCHIVE = 10 * 1024 * 1024

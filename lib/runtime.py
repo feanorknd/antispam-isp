@@ -379,6 +379,10 @@ def start_status_http(config, directory):
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path != "/":
+                if getattr(config, "v", config).get("analytics_enabled", False):
+                    from dashboard import serve
+                    if serve(self, directory):
+                        return
                 self.send_error(404)
                 return
             body = json.dumps(http_status(directory, config["stale_after"]), ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -408,6 +412,23 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
     spawn = subprocess.Popen if spawn is None else spawn
     stopping = [False]
     http_server = None
+    stats_child = None
+    stats_retry = [0]
+    stats_enabled = getattr(config, "v", config).get("analytics_enabled", False)
+    def supervise_stats():
+        nonlocal stats_child
+        if not stats_enabled or stopping[0]:
+            return
+        if stats_child is not None and stats_child.poll() is not None:
+            audit("estadisticas_terminadas", codigo=stats_child.returncode)
+            stats_child = None
+        if stats_child is None and time.monotonic() >= stats_retry[0]:
+            stats_retry[0] = time.monotonic() + 60
+            try:
+                stats_child = subprocess.Popen([sys.executable, str(Path(__file__).with_name("analytics.py")), str(directory)],
+                                               env=dict(os.environ, OUTBOUND_SPAM_SERVICE="1"))
+            except OSError as exc:
+                audit("estadisticas_arranque_error", error=str(exc))
     old_handlers = {}
     def stop(signum, frame):
         stopping[0] = True
@@ -425,6 +446,7 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
             cycles = 0
             audit("servicio_iniciado", mode="servicio", intervalo=config["run_interval"], estado=str(directory))
             while not stopping[0] and (max_cycles is None or cycles < max_cycles):
+                supervise_stats()
                 started = time.time()
                 command = ["/bin/bash", str(base / "outbound-spam.sh"), "--config", config_path,
                            "--state-dir", str(directory), "--run", "--quiet", "--lock-wait", str(config["lock_wait"])]
@@ -432,6 +454,7 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
                 child = spawn(command) if spawn is not subprocess.Popen else spawn(command, env=environment)
                 last_heartbeat = float("-inf")
                 while True:
+                    supervise_stats()
                     result = child.poll()
                     if result is not None or time.monotonic() - last_heartbeat >= 2:
                         write_atomic(directory / "service-status.json", json.dumps({"pid": os.getpid(), "worker_pid": child.pid,
@@ -455,10 +478,19 @@ def daemon_loop(config, base, config_path, write_atomic, max_cycles=None, spawn=
                     else:
                         until = time.monotonic() + interval
                         while not stopping[0] and time.monotonic() < until:
+                            supervise_stats()
                             time.sleep(min(0.2, max(0, until - time.monotonic())))
             write_atomic(directory / "service-status.json", json.dumps({"pid": os.getpid(), "heartbeat": time.time(), "active": False, "stopped": True}))
             audit("servicio_detenido", mode="servicio", pasadas=cycles)
     finally:
+        if stats_child is not None:
+            if stats_child.poll() is None:
+                stats_child.terminate()
+            try:
+                stats_child.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                stats_child.kill()
+                stats_child.wait()
         if http_server is not None:
             http_server.shutdown()
             http_server.server_close()
