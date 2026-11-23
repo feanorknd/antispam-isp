@@ -1,6 +1,6 @@
 # shellcheck shell=bash disable=SC2034
 # Configuración Bash. Instalar como /root/scripts/outbound-spam.conf, modo 0600.
-# Versión estable 2.0.0. Las direcciones son ejemplos: sustituir antes de activar avisos.
+# Versión estable 2.1.0. Las direcciones son ejemplos: sustituir antes de activar avisos.
 log_file=/var/log/mail.log
 state_dir=/var/lib/outbound-spam
 max_sent=100
@@ -17,6 +17,8 @@ max_read_bytes=67108864
 command_timeout=30
 stale_after=180
 run_interval=60                    # descanso DESPUÉS de terminar una pasada
+auto_update=true                   # releases estables oficiales; timer systemd independiente
+auto_update_interval=3600          # segundos entre comprobaciones; conserva valores/configuración
 status_http_host=127.0.0.1         # dirección IPv4 del servicio HTTP
 status_http_port=23456             # puerto HTTP del estado JSON en /
 # Histórico independiente (60 días) y dashboard en /dashboard/.
@@ -34,6 +36,8 @@ max_action_age=180
 reminder_interval=21600             # mínimo efectivo: seis horas por cuenta, incluso tras --ack
 foreign_sender_divisor=4           # 100 pasa a 25 si hay externos con remitente ajeno a SASL/web
 sample_count=10
+# Los rechazos a destinos externos disparan las mismas acciones al superar max_sent/2
+# en time_period (o el límite/ventana particular de la cuenta). No se suman a envíos.
 
 # Acciones independientes. Activar block_smtp requiere --install-postfix-guard.
 # --install-postfix-guard instala también la ACL local si monitor_local=true (por defecto).

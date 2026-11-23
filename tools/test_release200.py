@@ -1,10 +1,11 @@
-"""Paquete compatible y CLI --upgrade real 1.3.0–1.3.4; en Docker se arranca el demonio resultante."""
+"""Paquete compatible y CLI --upgrade real 1.3.x/2.0.0; en Docker se arranca el demonio resultante."""
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
 import socket
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -31,7 +32,13 @@ HASHES = {
     "1.3.2": "7a65fb5d8e9e9c5111fe65409b62d46b79d55a0ebf94eefbcb74ec6784227e30",
     "1.3.3": "12e3a926394b34a3156b368076c261ed38e249a0ece56969a312559c59b267ab",
     "1.3.4": "7a7fdd25aed00ae2bb772fbf5ee030b013809eb03bcac0a5e8f906066b361dcf",
+    "2.0.0": "d11f3eb673ad85ab41d3dd9ae39b2bc933805c26068ad957d4cd001990876e05",
 }
+
+
+def previous_archive(version):
+    path = ROOT / "dist" / ("outbound-spam-" + version + ".tar.gz")
+    return path if path.exists() else ROOT / "dist" / version / path.name
 
 
 class PackedDistributionTests(unittest.TestCase):
@@ -45,7 +52,7 @@ class PackedDistributionTests(unittest.TestCase):
             self.assertFalse(set(d.BUNDLED_COMPONENTS) & set(manifest["files"]))
             for version, expected in HASHES.items():
                 with self.subTest(version=version):
-                    previous = ROOT / "dist" / ("outbound-spam-" + version + ".tar.gz")
+                    previous = previous_archive(version)
                     self.assertEqual(d.digest(previous), expected)
                     with tarfile.open(previous) as tar:
                         text = tar.extractfile("outbound-spam-" + version + "/lib/distribution.py").read()
@@ -81,10 +88,10 @@ class ReleasedUpgradeTests(unittest.TestCase):
     def tearDownClass(cls):
         subprocess.run(["/usr/sbin/postfix", "stop"], check=True, capture_output=True)
 
-    def check_upgrade(self, previous, active, enabled=True):
+    def check_upgrade(self, previous, active, enabled=True, auto_update=True, future_auto=False):
         with tempfile.TemporaryDirectory(dir="/root", prefix="upgrade200-") as temp:
             root = Path(temp)
-            historical = ROOT / "dist" / ("outbound-spam-" + previous + ".tar.gz")
+            historical = previous_archive(previous)
             self.assertEqual(d.digest(historical), HASHES[previous])
             with tarfile.open(historical) as tar:
                 tar.extractall(root)
@@ -101,7 +108,7 @@ class ReleasedUpgradeTests(unittest.TestCase):
                 sock.bind(("127.0.0.1", 0))
                 port = sock.getsockname()[1]
             unit, control = root / "outbound-spam.service", root / "systemctl"
-            control.write_text("#!/usr/bin/python3\n" + """import os,signal,subprocess,sys,time
+            control.write_text("#!/usr/bin/python3\n" + """import fcntl,os,signal,subprocess,sys,time
 from pathlib import Path
 root=Path(__file__).parent
 action=sys.argv[1]
@@ -113,6 +120,13 @@ if action=='stop':
     if (root/'daemon.pid').exists():
         try: os.kill(int((root/'daemon.pid').read_text()),signal.SIGTERM)
         except ProcessLookupError: pass
+        with (root/'state/daemon.lock').open('a') as lock:
+            until=time.monotonic()+30
+            while True:
+                try: fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB);break
+                except BlockingIOError:
+                    if time.monotonic()>until: raise RuntimeError('daemon did not stop')
+                    time.sleep(.1)
     (root/'active').write_text('inactive')
 if action=='start':
     with (root/'daemon-output').open('ab') as output:
@@ -129,6 +143,8 @@ if action=='start':
                         "run_interval=1\n" % (state, log, unit, control, port))
             if not enabled:
                 original += "analytics_enabled=false\nanalytics_outbox_mb=17\n"
+            if not auto_update:
+                original += "auto_update=false\nauto_update_interval=7200\n"
             config.write_text(original)
             config.chmod(0o600)
             profile, _ = runtime.validate_config(config.read_bytes(), ROOT, m.Config.from_bytes)
@@ -171,6 +187,11 @@ if action=='start':
                 migrated, _ = runtime.validate_config(config.read_bytes(), ROOT, m.Config.from_bytes)
                 self.assertEqual(migrated.v, profile.v)
                 self.assertEqual(migrated["analytics_enabled"], enabled)
+                self.assertEqual(migrated["auto_update"], auto_update)
+                update_service, update_timer = runtime.auto_update_units(migrated)
+                self.assertTrue(update_service.exists())
+                self.assertIn("--upgrade --automatic", update_service.read_text())
+                self.assertIn("OnUnitInactiveSec=%d" % (3600 if auto_update else 7200), update_timer.read_text())
                 self.assertTrue(json.loads((data / "outbound-spam.conf.last-good.json").read_text())["data"])
                 self.assertIn(VERSION, run("bash", str(target / "outbound-spam.sh"), "--version"))
                 self.assertTrue(json.loads((data / "installation.json").read_text())["project"] == d.PROJECT)
@@ -180,6 +201,8 @@ if action=='start':
                 store.db.close()
                 calls = (root / "calls").read_text()
                 self.assertEqual("start outbound-spam.service" in calls, active)
+                self.assertIn(("enable --now " if auto_update else "disable --now ") + update_timer.name, calls)
+                self.assertIn("daemon-reload", calls)
                 if not active:
                     run(str(control), "start", unit.name)
                 stamp = time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime())
@@ -226,11 +249,40 @@ if action=='start':
                     self.assertFalse((state / "analytics-status.json").exists())
                 before_text, before_mtime = config.read_bytes(), config.stat().st_mtime_ns
                 before_pid = (root / "daemon.pid").read_text()
+                # Ejecutar la ruta del timer con el mismo actualizador real y descarga controlada.
+                driver.write_text(driver.read_text().replace("'--upgrade'];", "'--upgrade','--automatic'];"))
                 second = json.loads(run("python3", str(driver)))
                 self.assertFalse(second["updated"])
                 self.assertEqual(config.read_bytes(), before_text)
                 self.assertEqual(config.stat().st_mtime_ns, before_mtime)
                 self.assertEqual((root / "daemon.pid").read_text(), before_pid)
+                if future_auto:
+                    # Una segunda release SUPERIOR, instalada por la ruta del timer 2.1.
+                    future = root / "future"
+                    shutil.copytree(data / "current", future)
+                    number = ".".join(map(str, d.version(VERSION)[:2] + (d.version(VERSION)[2] + 1,)))
+                    (future / "VERSION").write_text(number + "\n")
+                    engine = future / "lib/outbound_spam.py"
+                    engine.write_text(engine.read_text().replace('VERSION = "' + VERSION + '"', 'VERSION = "' + number + '"'))
+                    (future / "RELEASE.json").unlink()
+                    future_archive, future_hash = builder.build(future, root / "future-assets")
+                    future_url = "https://github.com/" + d.PROJECT + "/releases/download/v" + number + "/"
+                    metadata = {"tag_name": "v" + number, "draft": False, "prerelease": False, "assets": [
+                        {"name": future_archive.name, "browser_download_url": future_url + future_archive.name},
+                        {"name": "SHA256SUMS", "browser_download_url": future_url + "SHA256SUMS"}]}
+                    driver.write_text("import sys\nfrom pathlib import Path\nsys.path.insert(0,%r)\nimport distribution\n" % str(data / "current/lib") +
+                                      "payloads={%r:%r,%r:Path(%r).read_bytes(),%r:%r}\n" %
+                                      (d.LATEST, json.dumps(metadata).encode(), future_url + future_archive.name, str(future_archive),
+                                       future_url + "SHA256SUMS", (future_hash + "  " + future_archive.name + "\n").encode()) +
+                                      "distribution.upgrade.__defaults__=(lambda url,limit:payloads[url],distribution._prepare)\n" +
+                                      "from outbound_spam import main\nsys.argv=['outbound-spam.sh','--config',%r,'--upgrade','--automatic'];sys.exit(main())\n" % str(config))
+                    automated = json.loads(run("python3", str(driver)))
+                    self.assertTrue(automated["updated"])
+                    self.assertTrue(automated["service_restarted"])
+                    self.assertEqual(automated["version"], number)
+                    self.assertEqual(config.read_bytes(), before_text)
+                    self.assertNotEqual((root / "daemon.pid").read_text(), before_pid)
+                    self.assertIn(number, run("bash", str(target / "outbound-spam.sh"), "--version"))
             finally:
                 if (root / "daemon.pid").exists():
                     run(str(control), "stop", unit.name)
@@ -276,6 +328,17 @@ if action=='start':
 
     def test_explicit_analytics_disabled_is_preserved(self):
         self.check_upgrade("1.3.4", True, enabled=False)
+
+    def test_upgrade_200(self):
+        for active in (True, False):
+            with self.subTest(active=active):
+                self.check_upgrade("2.0.0", active)
+
+    def test_explicit_auto_update_disabled_is_preserved(self):
+        self.check_upgrade("2.0.0", True, auto_update=False)
+
+    def test_automatic_upgrade_to_superior_release(self):
+        self.check_upgrade("2.0.0", True, future_auto=True)
 
 
 if __name__ == "__main__":

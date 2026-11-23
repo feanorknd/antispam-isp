@@ -31,7 +31,7 @@ from postfix_settings import restart_postfix, MonitorError, LocalGuard, Websites
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 MIN_NOTICE_INTERVAL = 6 * 3600
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
 TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|pickup|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
@@ -72,6 +72,10 @@ CREATE TABLE IF NOT EXISTS held (
  incident INTEGER NOT NULL REFERENCES incidents(id), held_at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS blocks (account TEXT PRIMARY KEY, incident INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS acknowledgements (account TEXT PRIMARY KEY, cutoff REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS rejections (
+ id TEXT PRIMARY KEY, account TEXT NOT NULL, at REAL NOT NULL, qid TEXT NOT NULL,
+ address TEXT NOT NULL, sender TEXT NOT NULL, external INTEGER, log_line TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS rejections_time ON rejections(at,account);
 CREATE TABLE IF NOT EXISTS notice_state (account TEXT PRIMARY KEY,last_attempt REAL,last_success REAL);
 CREATE TABLE IF NOT EXISTS queue_ops (
  id TEXT PRIMARY KEY, account TEXT NOT NULL, qid TEXT NOT NULL, fingerprint TEXT NOT NULL,
@@ -137,13 +141,15 @@ class Config:
         self.v.setdefault("block_local", True)
         self.v.setdefault("analytics_enabled", True)
         self.v.setdefault("analytics_outbox_mb", 64)
+        self.v.setdefault("auto_update", True)
+        self.v.setdefault("auto_update_interval", 3600)
         if self.v.get("systemctl_bin") == "/usr/bin/systemctl" and not os.path.exists("/usr/bin/systemctl") and os.path.exists("/bin/systemctl"):
             self.v["systemctl_bin"] = "/bin/systemctl"
         integers = ("max_sent", "time_period", "max_read_bytes", "command_timeout", "stale_after",
                     "rotation_grace", "retention_days", "max_action_age", "reminder_interval",
                     "sample_count", "smtp_port", "ispconfig_server_id", "foreign_sender_divisor", "postfix_headroom",
                     "run_interval", "lock_wait", "backup_interval", "integrity_interval", "backup_copies", "status_http_port",
-                    "analytics_outbox_mb")
+                    "analytics_outbox_mb", "auto_update_interval")
         for k in integers:
             try:
                 self.v[k] = int(self.v[k])
@@ -158,7 +164,7 @@ class Config:
             raise MonitorError("status_http_host debe ser una dirección IPv4")
         if self.v["status_http_port"] > 65535:
             raise MonitorError("status_http_port debe estar entre 1 y 65535")
-        for k in ("notify", "block_smtp", "hold_queue", "reset_password", "monitor_local", "block_local", "analytics_enabled"):
+        for k in ("notify", "block_smtp", "hold_queue", "reset_password", "monitor_local", "block_local", "analytics_enabled", "auto_update"):
             if str(self.v.get(k)).lower() not in ("true", "false"):
                 raise MonitorError("Configuración: booleano true/false requerido: " + k)
             self.v[k] = str(self.v[k]).lower() == "true"
@@ -402,6 +408,7 @@ class Parser:
         self.first_time = None
         self.lines = 0
         self.sample_counts = {}
+        self.source_offset = None
 
     def session(self, line):
         match = SMTP_SESSION.match(line)
@@ -449,6 +456,16 @@ class Parser:
         pickup = re.fullmatch(r"uid=(\d+) from=<(.*?)>(?: orig_id=[A-Za-z0-9]+)?", text) if service == "pickup" else None
         if self.s.analytics:
             self.s.analytics.observe(when, service, qid, text, auth, pickup)
+        if service in ("smtpd", "cleanup") and text.startswith(("reject:", "milter-reject:")):
+            # Solo identidad autenticada o correlación previa con la cola; nunca From.
+            message = self.s.active(qid) if qid != "NOQUEUE" else None
+            account = auth.group(1).casefold() if service == "smtpd" and auth else (message["account"] if message else None)
+            address = re.search(r"\bto=<(.*?)>", text)
+            sender = re.search(r"\bfrom=<(.*?)>", text)
+            if account and account not in self.c["ignore"] and not (auth and is_local(account)) and address:
+                identity = hashlib.sha256((line + "\0" + str(self.source_offset)).encode("utf-8")).hexdigest()
+                self.s.db.execute("INSERT OR IGNORE INTO rejections VALUES (?,?,?,?,?,?,NULL,?)",
+                                  (identity, account, when, qid, address[1], sender[1] if sender else (message["sender"] or "" if message else ""), line))
         if pickup and self.c["monitor_local"]:
             account = "local:" + str(int(pickup.group(1)))
             if account in self.c["ignore"]:
@@ -611,6 +628,7 @@ class LogReader:
                 if not raw.endswith(b"\n"):
                     f.seek(start)
                     break
+                self.parser.source_offset = start
                 self.parser.feed(raw.decode("utf-8", errors="replace").rstrip("\r\n"))
                 self.bytes += len(raw)
                 cursor["offset"] = f.tell()
@@ -759,6 +777,39 @@ class Router:
                 raise MonitorError("Transporte sin clasificar: " + transport)
         self.cache[key] = result
         return result
+
+    def rejection_external(self, address, sender="", visited=None):
+        """Un RCPT rechazado aún no tiene los alias expandidos por cleanup."""
+        if self.c["routing_mode"] == "static":
+            return self.external(address, sender)
+        if "@" not in address:
+            raise MonitorError("Destinatario rechazado sin dominio: " + address)
+        visited = set() if visited is None else visited
+        if address.casefold() in visited or len(visited) >= 30:
+            raise MonitorError("Bucle de alias al clasificar rechazo: " + address)
+        visited = visited | {address.casefold()}
+        self.load()
+        local, domain = address.rsplit("@", 1)
+        keys = [address]
+        for char in self.parameters["recipient_delimiter"]:
+            if char in local:
+                keys.append(local.split(char, 1)[0] + "@" + domain)
+                break
+        keys.append("@" + domain)
+        aliases = self.lookup(self.parameters["virtual_alias_maps"], keys)
+        if not aliases:
+            return self.external(address, sender)
+        results = []
+        for target in re.split(r"[\s,]+", aliases):
+            if not target:
+                continue
+            if target.startswith("@"):
+                target = local + target
+            results.append(self.external(target, sender) if target.casefold() == address.casefold() else
+                           self.rejection_external(target, sender, visited))
+        if not results:
+            raise MonitorError("Alias vacío al clasificar rechazo: " + address)
+        return int(any(results))
 
 
 class Envelope:
@@ -951,6 +1002,12 @@ def resolve_recipients(store, config, router, queue=None, bootstrap=False):
             store.recipient(r["mid"], r["address"], router.external(r["address"]))
         except MonitorError as e:
             issues.append(str(e))
+    for r in store.db.execute("SELECT id,address,sender FROM rejections WHERE external IS NULL").fetchall():
+        try:
+            external = router.rejection_external(r["address"], r["sender"])
+            store.db.execute("UPDATE rejections SET external=? WHERE id=?", (external, r["id"]))
+        except MonitorError as e:
+            issues.append("Rechazo sin clasificar: " + str(e))
     return issues
 
 
@@ -1025,7 +1082,61 @@ def evaluate(store, config, now, offline=False):
         elif peak * incident["maximum"] > incident["peak"] * maximum:
             store.db.execute("UPDATE incidents SET peak=?,maximum=?,event_time=?,snapshot=?,base_maximum=?,reason=?,foreign_recipients=? WHERE id=?",
                              (peak, maximum, peak_time, evidence, base_maximum, reason, foreign_count, incident["id"]))
+    evaluate_rejections(store, config, now, offline, floor, resolving, current, opened)
     return current, opened
+
+
+def evaluate_rejections(store, config, now, offline, floor, resolving, current, opened):
+    groups = collections.defaultdict(list)
+    for row in store.db.execute("SELECT account,at FROM rejections WHERE external=1 AND at>=? AND at<=? ORDER BY at,id", (floor, now)):
+        if row["account"] not in config["ignore"] and row["account"] not in resolving:
+            groups[row["account"]].append(row["at"])
+    for account, events in groups.items():
+        maximum, period = config.limit(account)
+        # Entero exacto: 2*n > maximum, también para límites impares y max_sent=1.
+        threshold = maximum // 2
+        cutoff = store.db.execute("SELECT cutoff FROM acknowledgements WHERE account=?", (account,)).fetchone()
+        cutoff = cutoff[0] if cutoff else -1
+        window, best = collections.deque(), None
+        for at in events:
+            window.append(at)
+            while window and window[0] <= at - period:
+                window.popleft()
+            if at > cutoff and (offline or at >= now - config["max_action_age"]) and len(window) > threshold:
+                if best is None or len(window) > best[0]:
+                    best = (len(window), at)
+        count = sum(at > now - period for at in events)
+        if count > threshold and events[-1] > cutoff and (best is None or count > best[0]):
+            best = (count, now)
+        status = current.setdefault(account, {"external_recipients": 0, "max_sent": maximum,
+                                            "base_max_sent": maximum, "foreign_sender_recipients": 0, "time_period": period})
+        status.update(external_rejections=count, rejection_threshold=maximum / 2)
+        if best is None:
+            continue
+        peak, at = best
+        evidence = []
+        for row in store.db.execute("SELECT * FROM rejections WHERE account=? AND external=1 AND at>? AND at<=? ORDER BY at DESC,id LIMIT ?",
+                                    (account, at - period, at, config["sample_count"])):
+            evidence.append({"qid": row["qid"], "ip": "ver log", "message_id": None, "subject": None,
+                             "sender": row["sender"], "auth_line": row["log_line"], "queue_line": None,
+                             "samples": [], "recipients": [{"address": row["address"], "external": 1, "delivery": "rejected", "log_line": None}]})
+        incident = store.db.execute("SELECT * FROM incidents WHERE account=? AND acked IS NULL", (account,)).fetchone()
+        if incident is None:
+            iid = store.db.execute("INSERT INTO incidents(account,opened,event_time,peak,maximum,period,snapshot,base_maximum,reason) VALUES (?,?,?,?,?,?,?,?,?)",
+                                   (account, now, at, peak, threshold, period, json.dumps(evidence, ensure_ascii=False), maximum, "external_rejections")).lastrowid
+            opened.append(iid)
+        else:
+            iid = incident["id"]
+            if incident["reason"] == "external_rejections" and peak > incident["peak"]:
+                store.db.execute("UPDATE incidents SET peak=?,event_time=?,snapshot=?,maximum=?,base_maximum=?,period=? WHERE id=?",
+                                 (peak, at, json.dumps(evidence, ensure_ascii=False), threshold, maximum, period, iid))
+        if not offline:
+            # También añadir acciones ausentes si el incidente ya estaba abierto.
+            for kind in ("block_smtp", "hold_queue", "reset_password", "notify"):
+                if config[kind] and (not is_local(account) or kind not in ("block_smtp", "reset_password")):
+                    store.db.execute("INSERT OR IGNORE INTO actions(incident,kind) VALUES (?,?)", (iid, kind))
+            if is_local(account) and config["block_local"]:
+                store.db.execute("INSERT OR IGNORE INTO actions(incident,kind) VALUES (?,'block_local')", (iid,))
 
 
 class Guard:
@@ -1339,9 +1450,12 @@ class Actions:
         lines = ["Incidente de abuso SMTP saliente #%d" % incident["id"],
                  "Servidor: " + os.uname().nodename,
                  ("Identidad local: " if is_local(incident["account"]) else "Cuenta SASL: ") + incident["account"],
-                 "Destinatarios externos en la ventana: %d (limite %d / %d segundos)" % (incident["peak"], incident["maximum"], incident["period"]),
+                 ("Rechazos externos en la ventana: %d (umbral estricto > %s / %d segundos)" %
+                  (incident["peak"], str(incident["base_maximum"] / 2), incident["period"]) if incident["reason"] == "external_rejections" else
+                  "Destinatarios externos en la ventana: %d (limite %d / %d segundos)" % (incident["peak"], incident["maximum"], incident["period"])),
                  "Fin de ventana (hora local): " + runtime.human_timestamp(incident["event_time"]),
-                 "Se cuentan destinatarios aceptados, incluidos pendientes; no reintentos.",
+                 ("Se cuentan intentos rechazados a destinatarios externos; no son envíos aceptados." if incident["reason"] == "external_rejections" else
+                  "Se cuentan destinatarios aceptados, incluidos pendientes; no reintentos."),
                  "Limite base: %d; motivo: %s; externos con dominio remitente distinto: %d" %
                  (incident["base_maximum"] or incident["maximum"], incident["reason"], incident["foreign_recipients"]),
                  "Informe exclusivo de esta cuenta; separacion minima entre intentos: 6 horas.", "", "Acciones:"]
@@ -1484,7 +1598,7 @@ def coverage_issues(store, config, now):
 
 
 def summarize(store, config, now, current, issues):
-    incidents = [dict(r) for r in store.db.execute("SELECT id,account,peak,maximum,period FROM incidents WHERE acked IS NULL")]
+    incidents = [dict(r) for r in store.db.execute("SELECT id,account,peak,maximum,period,reason,base_maximum FROM incidents WHERE acked IS NULL")]
     held = store.db.execute("SELECT COUNT(*) FROM held").fetchone()[0]
     blocks = [r[0] for r in store.db.execute("SELECT account FROM blocks")]
     code = 2 if issues else (1 if incidents or held or blocks else 0)
@@ -1496,7 +1610,8 @@ def summarize(store, config, now, current, issues):
     message = "Spam Status: %s; incidentes=%d; retenidos=%d; bloqueadas=%d" % (
         "ERROR" if code == 2 else "ALERTA" if code == 1 else "CALENTAMIENTO" if warming else "OK", len(incidents), held, len(blocks))
     if incidents:
-        message += "; " + ", ".join("%s: %d/%d en %ds" % (i["account"], i["peak"], i["maximum"], i["period"]) for i in incidents[:5])
+        message += "; " + ", ".join(("%s: %d rechazos externos (>%s) en %ds" % (i["account"], i["peak"], i["base_maximum"] / 2, i["period"]) if i["reason"] == "external_rejections" else
+                                   "%s: %d/%d en %ds" % (i["account"], i["peak"], i["maximum"], i["period"])) for i in incidents[:5])
     if issues:
         message += "; " + "; ".join(issues[:3])
     if info:
@@ -2160,6 +2275,7 @@ def cli():
     mode.add_argument("--run", action="store_true", help=argparse.SUPPRESS)
     mode.add_argument("--daemon", action="store_true", help="Proceso del servicio systemd; espera entre pasadas completas")
     mode.add_argument("--upgrade", action="store_true", help="Descargar/verificar el release estable; conservar config/estado y actualizar unidad propia intacta")
+    p.add_argument("--automatic", action="store_true", help=argparse.SUPPRESS)
     mode.add_argument("--prepare-upgrade", action="store_true", help=argparse.SUPPRESS)
     mode.add_argument("--install-service", action="store_true", help="Crear, habilitar e iniciar la unidad systemd")
     mode.add_argument("--uninstall-service", action="store_true", help="Detener y retirar la unidad, conservando datos, bloqueos y HOLD")
@@ -2197,6 +2313,8 @@ def cli():
         p.print_help()
         p.exit()
     args = p.parse_args()
+    if args.automatic and not args.upgrade:
+        p.error("--automatic requiere --upgrade")
     if args.sender is not None and not args.inspect_local_user:
         p.error("--sender requiere --inspect-local-user")
     selected = any(getattr(args, k) for k in ("inspect_local_user", "install_local_guard", "uninstall_local_guard", "run", "daemon", "upgrade", "prepare_upgrade", "install_service", "uninstall_service", "replay", "status", "doctor", "install_monit", "uninstall_monit", "install_postfix_guard",
@@ -2332,11 +2450,17 @@ def _main(parser, args):
         if os.environ.get("OUTBOUND_SPAM_SERVICE") == "1":
             raise MonitorError("Ejecute --upgrade desde una sesión administrativa, fuera del servicio")
         from distribution import upgrade
+        if config_warning:
+            raise MonitorError(config_warning + "; corrija la configuración antes de actualizar")
+        if args.automatic and not config["auto_update"]:
+            print(json.dumps({"updated": False, "version": VERSION, "message": "Actualización automática desactivada"}))
+            return 0
         long_config = object.__new__(Config)
         long_config.v = dict(config.v, command_timeout=max(660, config["command_timeout"]))
         print(json.dumps(upgrade(base, VERSION, args.config_path, config, Commands(long_config)), ensure_ascii=False, indent=2))
         return 0
     if args.daemon:
+        runtime.sync_auto_update(config, commands, base, args.config_path, atomic_write)
         return runtime.daemon_loop(config, base, args.config_path, atomic_write)
     if args.install_service:
         print(runtime.install_service(config, commands, base, args.config_path, atomic_write))
@@ -2429,6 +2553,15 @@ def _main(parser, args):
                         store.persist_critical()
                     from distribution import legacy_prepare
                     legacy_prepare(code_base, args.config_path)
+                    # Lo ejecuta el código candidato, también con actualizadores 1.3.x/2.0.0.
+                    # No depender de que el actualizador antiguo conozca el nuevo timer.
+                    installation = runtime.data_root() / "installation.json"
+                    if installation.is_file():
+                        record = json.loads(installation.read_text())
+                        from distribution import PROJECT
+                        if record.get("project") != PROJECT or record.get("config") != args.config_path:
+                            raise MonitorError("Instalación no verificable para activar actualización automática")
+                        runtime.sync_auto_update(config, commands, Path(record["target"]), args.config_path, atomic_write)
                 except Exception:
                     runtime.rollback_config_completion(args.config_path, original_config, code_base, parse_profile, atomic_write)
                     raise
@@ -2547,6 +2680,7 @@ def _main(parser, args):
                         store.db.commit()
                     # Purgar solo mensajes terminados: conservar correlación de colas antiguas/HOLD.
                     with store.db:
+                        store.db.execute("DELETE FROM rejections WHERE at<?", (now - config["retention_days"] * 86400,))
                         if store.analytics:
                             store.db.execute("DELETE FROM messages WHERE removed=1 AND created<? AND id NOT IN (SELECT mid FROM stats_dirty)",
                                              (now - config["retention_days"] * 86400,))

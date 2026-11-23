@@ -1,6 +1,8 @@
 # Outbound Spam Monitor
 
-Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión estable **2.0.0**, rama **`main`**.
+Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión estable **2.1.0**, rama **`main`**.
+
+**2.1 añade actualización automática aproximadamente cada hora y contención por rechazos externos**: al superar `max_sent/2` dentro de la ventana de la cuenta se aplican las mismas acciones configuradas, incluido el cambio de contraseña si `reset_password=true`. El upgrade desde 1.3.x o 2.0.0 instala y habilita el timer sin intervención adicional. [Notas del release 2.1.0](docs/RELEASE_2.1.0.md).
 
 **2.0 añade histórico SQLite de 60 días y dashboard dinámico**, con estadísticas de cuentas ignoradas, filtros por usuario, origen, destino y periodo. El trabajador es independiente del análisis y recupera automáticamente el histórico ante corrupción. Incluye escala Y entera, tiempos del trabajador y todas las columnas de las tablas alineadas a la izquierda. [Panel, Nginx y diagnóstico](docs/DASHBOARD.md).
 
@@ -29,7 +31,7 @@ VERSION                       Versión de la distribución
 
 ## Instalación y actualización
 
-Descargar `outbound-spam-2.0.0.tar.gz` y `SHA256SUMS` del [release 2.0.0](https://github.com/feanorknd/antispam-isp/releases/tag/v2.0.0), comprobar el checksum, extraer y ejecutar:
+Descargar `outbound-spam-2.1.0.tar.gz` y `SHA256SUMS` del [release 2.1.0](https://github.com/feanorknd/antispam-isp/releases/tag/v2.1.0), comprobar el checksum, extraer y ejecutar:
 
 ```bash
 sudo ./install.sh --install-deps
@@ -45,6 +47,8 @@ sudo /root/scripts/outbound-spam.sh --doctor
 ```bash
 sudo /root/scripts/outbound-spam.sh --upgrade
 ```
+
+Desde 2.1, `auto_update=true` y `auto_update_interval=3600` habilitan `outbound-spam-update.timer`, independiente del analizador. El primer upgrade a 2.1 se ejecuta manualmente; después se instalan automáticamente las releases estables superiores. Comprobar `systemctl is-enabled outbound-spam-update.timer`, `systemctl is-active outbound-spam-update.timer` y `systemctl list-timers outbound-spam-update.timer`. Configuración y ejemplo se completan incluso sin release superior. Se respetan las acciones existentes: para bloquear SMTP debe estar activo `block_smtp=true` y el guard instalado.
 
 El instalador conserva el archivo operativo y el estado. En `/root/scripts/` instala únicamente los dos scripts, la configuración privada y su ejemplo. Código, versiones, respaldos y última configuración válida se reúnen en `/var/lib/outbound-spam/`, con activación atómica mediante `current`. El upgrade migra automáticamente la distribución anterior y reanuda el servicio si estaba activo. Véase [instalación y upgrade](docs/UPGRADE.md).
 
@@ -95,8 +99,11 @@ Empezar por [docs/README.md](docs/README.md) y [la instalación](docs/INSTALLATI
 ```bash
 python3 tools/test_config_completion.py -v
 python3 tools/test_websites.py -v
+python3 tools/test_release210.py -v
 python3 tools/build_release.py --output dist
 ```
+
+El empaquetador comprueba obligatoriamente el inventario del ejemplo, la migración de un `.conf` incompleto, la conservación de valores y la idempotencia antes de generar cada paquete.
 
 Para reproducir el asset publicado de una versión, construir desde su etiqueta (`v1.0.0`), que fija también la documentación. `main` puede contener anotaciones posteriores a la publicación.
 

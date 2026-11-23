@@ -8,6 +8,7 @@ import json
 import hashlib
 from pathlib import Path
 import sys
+import subprocess
 import tarfile
 import zlib
 
@@ -16,10 +17,44 @@ sys.path.insert(0, str(ROOT / "lib"))
 import distribution
 
 
+def verify_configuration(source):
+    """Contrato obligatorio en cada paquete: ejemplo, migración y valores privados."""
+    code = r'''
+import os, sys, tempfile
+from pathlib import Path
+base = Path(sys.argv[1])
+sys.path.insert(0, str(base / "lib"))
+import outbound_spam as m
+import runtime
+with tempfile.TemporaryDirectory(prefix="release-config-", dir="/root" if os.geteuid() == 0 else "/tmp/opencode") as folder:
+    root = Path(folder)
+    os.environ["OUTBOUND_SPAM_DATA"] = str(root / "data")
+    os.environ["OUTBOUND_SPAM_LOG"] = str(root / "audit.log")
+    path = root / "production.conf"
+    original = "notify=false\nreport=()\nmax_sent=713\nauto_update=false\n"
+    m.atomic_write(path, original)
+    before, serialized = runtime.validate_config(path.read_bytes(), base, m.Config.from_bytes)
+    declarations = runtime.example_declarations(base)
+    if set(m.Config.from_bytes(serialized).v) - set(declarations):
+        raise ValueError("Variables operativas ausentes del ejemplo")
+    runtime.migrate_config(path, base, m.Config.from_bytes, m.atomic_write)
+    after, _ = runtime.validate_config(path.read_bytes(), base, m.Config.from_bytes)
+    if before.v != after.v or runtime.assigned_names(path.read_text()) != set(declarations) or not path.read_text().endswith(original):
+        raise ValueError("Migración de configuración incompleta o cambia valores de producción")
+    content, modified = path.read_bytes(), path.stat().st_mtime_ns
+    if runtime.migrate_config(path, base, m.Config.from_bytes, m.atomic_write)["added"] or path.read_bytes() != content or path.stat().st_mtime_ns != modified:
+        raise ValueError("Migración de configuración no idempotente")
+'''
+    result = subprocess.run([sys.executable, "-c", code, str(source)], capture_output=True, text=True, timeout=30)
+    if result.returncode:
+        raise ValueError("Contrato de configuración del release incumplido: " + result.stderr.strip())
+
+
 def build(source, output, legacy=False):
     source, output = Path(source).resolve(), Path(output).resolve()
     manifest = distribution.make_manifest(source)
     distribution.validate_tree(source)
+    verify_configuration(source)
     output.mkdir(mode=0o755, parents=True, exist_ok=True)
     number = manifest["version"]
     prefix = ("antispam-isp-" if legacy else "outbound-spam-") + number

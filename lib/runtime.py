@@ -566,6 +566,86 @@ WantedBy=multi-user.target
 """ % command
 
 
+def auto_update_units(config):
+    service = Path(config["service_unit"])
+    return service.with_name(service.stem + "-update.service"), service.with_name(service.stem + "-update.timer")
+
+
+def sync_auto_update(config, commands, base, config_path, write_atomic):
+    """Timer separado: detener el analizador durante upgrade no mata al actualizador."""
+    service, timer = auto_update_units(config)
+    if not Path(config["service_unit"]).exists():
+        return False
+    # Mismas restricciones de rutas que la unidad principal.
+    render_service(config, base, str(config_path))
+    texts = {
+        service: """# outbound-spam: actualización automática gestionada
+[Unit]
+Description=Outbound spam stable release upgrade
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+Environment=PATH=/usr/sbin:/usr/bin:/sbin:/bin
+UnsetEnvironment=OUTBOUND_SPAM_SERVICE
+ExecStart=/bin/bash %s/outbound-spam.sh --config %s --upgrade --automatic
+TimeoutStartSec=1800
+""" % (base, config_path),
+        timer: """# outbound-spam: actualización automática gestionada
+[Unit]
+Description=Check outbound spam stable releases periodically
+
+[Timer]
+OnActiveSec=%d
+OnUnitInactiveSec=%d
+AccuracySec=60
+Unit=%s
+
+[Install]
+WantedBy=timers.target
+""" % (config["auto_update_interval"], config["auto_update_interval"], service.name)}
+    previous = {}
+    for path in texts:
+        if path.is_symlink() or (path.exists() and "# outbound-spam: actualización automática gestionada" not in path.read_text()):
+            raise ValueError("Unidad de actualización ajena: " + str(path))
+        previous[path] = path.read_text() if path.exists() else None
+    changed = any(previous[path] != text for path, text in texts.items())
+    try:
+        for path, text in texts.items():
+            if previous[path] != text:
+                write_atomic(path, text, 0o644)
+        if changed:
+            commands.run("systemctl", ["daemon-reload"])
+        if config["auto_update"]:
+            commands.run("systemctl", ["enable", "--now", timer.name])
+            if changed:
+                commands.run("systemctl", ["restart", timer.name])
+        else:
+            commands.run("systemctl", ["disable", "--now", timer.name])
+    except Exception:
+        if previous[timer] is None:
+            try:
+                commands.run("systemctl", ["disable", "--now", timer.name])
+            except Exception:
+                pass
+        for path, text in previous.items():
+            if text is None:
+                if path.exists():
+                    path.unlink()
+            else:
+                write_atomic(path, text, 0o644)
+        try:
+            commands.run("systemctl", ["daemon-reload"])
+        except Exception:
+            pass
+        raise
+    audit("actualizacion_automatica_configurada", habilitada=config["auto_update"], intervalo=config["auto_update_interval"], timer=timer.name)
+    return True
+
+
 def install_service(config, commands, base, config_path, write_atomic):
     path = Path(config["service_unit"])
     if not path.parent.is_dir():
@@ -589,6 +669,7 @@ def install_service(config, commands, base, config_path, write_atomic):
         write_atomic(path, text, 0o644)
         commands.run("systemctl", ["daemon-reload"])
         commands.run("systemctl", ["enable", path.name])
+        sync_auto_update(config, commands, base, config_path, write_atomic)
         commands.run("systemctl", ["restart", path.name])
     except Exception:
         if previous is None:
@@ -612,6 +693,15 @@ def uninstall_service(config, commands):
         return "Servicio no instalado"
     if path.is_symlink() or "# outbound-spam" not in path.read_text():
         raise ValueError("La unidad no pertenece a outbound-spam")
+    service, timer = auto_update_units(config)
+    for entry in (service, timer):
+        if entry.is_symlink() or (entry.exists() and "# outbound-spam: actualización automática gestionada" not in entry.read_text()):
+            raise ValueError("Unidad de actualización ajena: " + str(entry))
+    if timer.exists():
+        commands.run("systemctl", ["disable", "--now", timer.name])
+    for entry in (timer, service):
+        if entry.exists():
+            entry.unlink()
     commands.run("systemctl", ["disable", "--now", path.name])
     path.unlink()
     commands.run("systemctl", ["daemon-reload"])

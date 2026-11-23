@@ -2,18 +2,18 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-> **2.0.0 estable:** se actualiza directamente desde 1.3.0–1.3.4 con su propio `--upgrade`. Se completa el `.conf`, se conserva el estado y se reanuda el servicio con histórico/dashboard habilitados por defecto. Detalles: [RELEASE_2.0.0.md](RELEASE_2.0.0.md) y [DASHBOARD.md](DASHBOARD.md).
+> **2.1.0 estable:** actualización directa desde 1.3.x y 2.0.0 con su propio `--upgrade`. Completa configuración, conserva estado/acciones y activa el chequeo horario de releases superiores. Detalles: [RELEASE_2.1.0.md](RELEASE_2.1.0.md).
 
-## Instalación nueva desde el release 2.0.0
+## Instalación nueva desde el release 2.1.0
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.0.0/outbound-spam-2.0.0.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.0.0/SHA256SUMS
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.1.0/outbound-spam-2.1.0.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.1.0/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf outbound-spam-2.0.0.tar.gz
-sudo ./outbound-spam-2.0.0/install.sh --install-deps
+tar -xzf outbound-spam-2.1.0.tar.gz
+sudo ./outbound-spam-2.1.0/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
@@ -57,6 +57,25 @@ Cuando hay una versión más moderna:
 Al preparar 1.2.2 se añaden al final de la configuración `status_http_host=127.0.0.1` y `status_http_port=23456` si faltan. Se preservan los valores existentes. El servicio debe estar instalado y activo; el upgrade conserva su estado activo/parado. Retirar cualquier programación antigua. Si el puerto está ocupado el servicio no podrá arrancar.
 
 Desde el actualizador 1.0.2 se revisa también la definición systemd existente. Una unidad propia intacta se actualiza con la plantilla del candidato si declara `service_unit_api=1`; se guarda su copia y se ejecuta `daemon-reload`. Se preservan `ExecStart` (incluidos config/ruta de estado), el estado parado/activo y los archivos `.service.d/`. Una unidad base personalizada se conserva y se informa de ello. Si falla `daemon-reload` antes del arranque nuevo se restaura la definición anterior junto con código/estado.
+
+### Actualización automática desde 2.1.0
+
+La preparación candidata instala `outbound-spam-update.service` y `outbound-spam-update.timer` junto a la unidad indicada por `service_unit` (los nombres derivan de esa unidad). Ejecuta `daemon-reload` y `enable --now` del timer si `auto_update=true`. Esto funciona aunque el upgrade lo esté ejecutando el código antiguo: no requiere volver a instalar el servicio ni ejecutar comandos adicionales. El demonio nuevo también reconcilia esas unidades al arrancar. El servicio analizador conserva su estado activo/parado.
+
+El `.conf` recibe `auto_update=true` y `auto_update_interval=3600` solo si faltan. La primera comprobación es aproximadamente una hora después de activar el timer; las siguientes, una hora después de terminar la anterior, con precisión de un minuto. Cada ejecución usa `--upgrade --automatic`, consulta solo releases estables superiores y aplica la misma verificación HTTPS/SHA-256 y migración de configuración que el comando manual. No comparte el grupo de procesos del analizador: puede detenerlo y arrancarlo sin matarse a sí misma. Los fallos se registran en journal/log y el timer vuelve a intentarlo en el siguiente intervalo.
+
+```bash
+systemctl is-enabled outbound-spam-update.timer
+systemctl is-active outbound-spam-update.timer
+systemctl list-timers outbound-spam-update.timer
+journalctl -u outbound-spam-update.service -n 50
+```
+
+Para desactivarlo, guardar `auto_update=false` y reiniciar `outbound-spam.service`; se deshabilita/detiene el timer. La ruta automática también lee la configuración vigente antes de consultar GitHub y no actualiza si está desactivada. Cambiar `auto_update_interval` y reiniciar el analizador aplica inmediatamente el nuevo intervalo. `--upgrade` manual sigue disponible. Retirar el servicio con `--uninstall-service` retira también las unidades gestionadas de actualización.
+
+El primer upgrade a 2.1.0 debe lanzarse manualmente en cada servidor. Los contadores nuevos arrancan desde el cursor operativo existente; no se convierten cifras históricas del dashboard en incidentes retroactivos.
+
+El empaquetador verifica el inventario de variables y la migración completa/idempotente de una configuración privada en **cada construcción de release**. Mantiene los valores originales y prueba también una desactivación explícita de actualizaciones.
 
 ### Histórico y dashboard: salto directo a 2.0.0
 

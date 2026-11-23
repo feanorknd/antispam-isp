@@ -1,5 +1,15 @@
 # Cambios efectuados
 
+## 2.1.0 — 2026-11-23
+
+- Actualización automática mediante timer systemd independiente, habilitado durante el upgrade desde los actualizadores publicados y al instalar/arrancar el servicio.
+- `auto_update=true` y `auto_update_interval=3600` se incorporan automáticamente si faltan; se respetan sus valores explícitos.
+- Rechazos a destinatarios externos, atribuidos a la cuenta, disparan incidente al superar estrictamente la mitad de su límite en su propia ventana. No incrementan los envíos aceptados.
+- Se excluyen destinos locales/desconocidos, intentos anónimos y cuentas ignoradas. La clasificación usa las rutas Postfix y se reintenta cuando falla.
+- Se aplican las mismas acciones configuradas, incluido `reset_password=true`; contador persistente, evidencias y motivo específico en estado/informe.
+- El empaquetador bloquea la publicación de paquetes cuyo ejemplo/configuración no cumpla el contrato de migración completa e idempotente.
+- Se conservan Python 3.8+, esquema operativo 4 (tabla aditiva), histórico 1 y API de upgrade/systemd 1.
+
 ## 2.0.0 — 2026-11-06
 
 - Histórico SQLite independiente de 60 días para SMTP AUTH y sendmail, incluidas cuentas ignoradas sin activar su protección.

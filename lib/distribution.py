@@ -452,6 +452,17 @@ def _snapshot_state(config, config_path, backup, commands=None):
     cache = runtime.config_cache(config_path)
     if cache.exists():
         shutil.copy2(str(cache), str(backup / "config.last-good.json"))
+    if commands is not None:
+        service, timer = runtime.auto_update_units(config)
+        saved = {"files": {}, "enabled": False, "active": False}
+        for path in (service, timer):
+            if path.is_symlink() or (path.exists() and "# outbound-spam: actualización automática gestionada" not in path.read_text()):
+                raise ValueError("Unidad de actualización ajena: " + str(path))
+            saved["files"][str(path)] = path.read_text() if path.exists() else None
+        if timer.exists():
+            saved["enabled"] = commands.run("systemctl", ["is-enabled", timer.name], ok=(0, 1, 3, 4)).strip() == "enabled"
+            saved["active"] = commands.run("systemctl", ["is-active", timer.name], ok=(0, 3, 4)).strip() == "active"
+        write(backup / "auto-update.before.json", json.dumps(saved))
     if commands is not None and (Path(config["postfix_config"]) / "main.cf").is_file():
         files = [Path(config["postfix_config"]) / name for name in ("outbound-spam-submit-blocked", "outbound-spam-submit-blocked.db")]
         files.append(Path(config["state_dir"]) / "postfix-submit-backup.json")
@@ -491,6 +502,26 @@ def _restore_state(config, config_path, backup, commands=None):
         shutil.copy2(str(backup / "config.last-good.json"), str(cache))
     elif cache.exists():
         os.replace(str(cache), str(failed / "config.last-good.json"))
+    timer_snapshot = backup / "auto-update.before.json"
+    if commands is not None and timer_snapshot.exists():
+        saved = json.loads(timer_snapshot.read_text())
+        _, timer = runtime.auto_update_units(config)
+        changed = any((Path(name).read_text() if Path(name).exists() else None) != text for name, text in saved["files"].items())
+        if changed:
+            if timer.exists():
+                commands.run("systemctl", ["disable", "--now", timer.name])
+            for name, text in saved["files"].items():
+                path = Path(name)
+                if text is None:
+                    if path.exists():
+                        path.unlink()
+                else:
+                    write(path, text, 0o644)
+            commands.run("systemctl", ["daemon-reload"])
+            if saved["enabled"]:
+                commands.run("systemctl", ["enable", timer.name])
+            if saved["active"]:
+                commands.run("systemctl", ["start", timer.name])
     snapshot = backup / "postfix-submit.before.json"
     if commands is not None and snapshot.exists():
         saved = json.loads(snapshot.read_text())
@@ -776,7 +807,7 @@ def upgrade(target, current, config_path, config, commands, downloader=fetch, pr
         raise ValueError("La instalación no corresponde a este proyecto/ruta")
     release = latest_release(current, downloader)
     if release is None:
-        completed = complete_installed_config(target, config_path, config)
+        completed = complete_installed_config(target, config_path, config, commands)
         return dict(completed, updated=False, version=current, message="Ya está instalada la última versión estable; configuración completa")
     number, name, urls = release
     root = runtime.private_data()
@@ -796,7 +827,7 @@ def upgrade(target, current, config_path, config, commands, downloader=fetch, pr
         return dict(result, updated=True)
 
 
-def complete_installed_config(target, config_path, config):
+def complete_installed_config(target, config_path, config, commands=None):
     """Incluso sin release nuevo, --upgrade sincroniza configuración y ejemplo."""
     root = runtime.private_data()
     source = root / "current"
@@ -820,12 +851,14 @@ def complete_installed_config(target, config_path, config):
                         raise ValueError("Una operación activa impide completar la configuración")
                     time.sleep(0.1)
             _owned_entrypoints(target, source)
-            from outbound_spam import Config
+            from outbound_spam import Config, Commands
             completed = runtime.migrate_config(config_path, source, Config.from_bytes, write)
             example = Path(target) / "outbound-spam.conf.example"
             text = (source / "outbound-spam.conf.example").read_text()
             if not example.exists() or example.read_text() != text:
                 write(example, text)
+            profile, _ = runtime.validate_config(Path(config_path).read_bytes(), source, Config.from_bytes)
+            runtime.sync_auto_update(profile, commands or Commands(profile), Path(target), str(config_path), write)
             return {"config_variables_added": completed["added"], "config_completion_backup": completed["backup"],
                     "missing_new_variables": []}
 

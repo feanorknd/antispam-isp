@@ -1,0 +1,49 @@
+{
+  "version": "2.1.0",
+  "date": "2026-11-23",
+  "local_regression": {"run": 225, "passed": 206, "skipped": 19, "failed": 0},
+  "native_regression": {
+    "ubuntu_focal_python38": {"run": 225, "passed": 225, "failed": 0},
+    "ubuntu_noble_python312": {"run": 225, "passed": 225, "failed": 0},
+    "includes": ["real Postfix guard and queues", "local delivery", "selective relay rate limits", "daemon and HTTP", "upgrade rollback including new timer"]
+  },
+  "release210": {
+    "test_file": "tools/test_release210.py",
+    "tests": 16,
+    "checks": [
+      "strict half threshold, odd limits and limit one",
+      "custom account window and exclusive lower boundary",
+      "local, anonymous, ignored and unknown excluded",
+      "cleanup milter rejection attribution",
+      "routing errors excluded and retried",
+      "virtual aliases classified by final recipient; alias loops remain unknown",
+      "identical logged attempts counted separately by byte position",
+      "restart, rotation and reread idempotence",
+      "reset_password false and true, executed SQL and no duplicate password reset",
+      "existing incident actions and acknowledgement cutoff",
+      "timer enabled, independent from main service, interval and disable",
+      "foreign unit protection and failed systemctl rollback",
+      "systemd-analyze verification on Focal and Noble",
+      "packager refuses missing operational configuration variable"
+    ]
+  },
+  "released_upgraders": {
+    "versions": ["1.3.0", "1.3.1", "1.3.2", "1.3.3", "1.3.4", "2.0.0"],
+    "platforms": ["ubuntu:focal / Python 3.8", "ubuntu:noble / Python 3.12"],
+    "methods_per_platform": 11,
+    "scenarios_per_platform": 15,
+    "active_and_stopped_main_service": true,
+    "timer_installed_and_enabled_by_candidate_prepare": true,
+    "explicit_auto_update_false_preserved": true,
+    "automatic_path_installs_synthetic_superior_release": true,
+    "automatic_no_new_release_keeps_daemon_pid": true,
+    "configuration_state_dashboard_preserved": true,
+    "network": "official old packages pinned by SHA256; local candidate metadata/assets supplied to original updater CLI",
+    "systemctl": "recording adapter with real daemon stop/start; unit syntax also verified by systemd-analyze"
+  },
+  "configuration_completion": {"tests": 11, "passed": 11, "mandatory_at_every_package_build": true},
+  "analytics_regression": {"tests": 18, "passed": 18},
+  "http_regression": {"tests": 9, "passed": 9},
+  "website_regression": {"tests": 18, "passed": 18},
+  "package": {"old_validators_checked": 6, "bundle_integrity_checked": true, "reproducible": true}
+}

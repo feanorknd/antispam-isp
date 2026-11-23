@@ -27,6 +27,14 @@ declare -A custom_limits=(
 - Desde 2.0, las cuentas de `ignore` sí participan en el histórico estadístico, con filtros para incluirlas/excluirlas. Esto no activa su protección antispam.
 - Un límite particular sustituye tanto máximo como periodo de esa cuenta.
 
+### Rechazos externos desde 2.1
+
+Un contador separado registra los rechazos de Postfix a destinatarios **externos**, atribuidos con certeza a la cuenta SASL o a una cola ya vinculada. Se abre un incidente al superar estrictamente `max_sent/2` en la misma ventana `(instante - time_period, instante]`, utilizando el límite/periodo particular cuando exista. Con 100 dispara al rechazo 51; con 101, al 51; con 1, al primero. Esta mitad se calcula sobre el límite base, sin aplicar `foreign_sender_divisor`.
+
+No se suman rechazos a los envíos aceptados. Se excluyen los destinos locales/desconocidos, intentos anónimos y cuentas de `ignore`. La clasificación usa las rutas reales de Postfix (o `local_domains` en modo estático); si falla se indica la falta de cobertura y se reintenta. El contador se conserva al reiniciar y la relectura/rotación del log no duplica eventos. El histórico del dashboard no se convierte retroactivamente en incidentes.
+
+El motivo `external_rejections` aplica las mismas acciones de la sección siguiente: **`reset_password=true` también cambia la contraseña de una cuenta SASL por exceso de rechazos**. Para bloquear se necesita `block_smtp=true` y el guard instalado. Se mantienen el reconocimiento y la resolución administrativa del incidente.
+
 ### Administrar límites y excepciones desde el script
 
 ```bash
@@ -81,13 +89,15 @@ Los mensajes exclusivamente locales no activan esa reducción. Al salir de la ve
 
 `block_local` es independiente de `block_smtp`; el upgrade instala su integración y recarga Postfix una sola vez. Los incidentes locales nunca generan una acción `reset_password`. `hold_queue` y `notify` se aplican a ambas clases de identidad. La ACL local no distingue destinatarios después del bloqueo: impide también nuevas inyecciones para buzones locales, aunque estos no consuman cuota. Detalles y diagnóstico en [LOCAL_SUBMISSION.md](LOCAL_SUBMISSION.md).
 
-Al abrir un incidente se registran las acciones habilitadas. Desactivar una acción suspende sus reintentos pendientes; no revierte acciones ya completadas. Para incorporar bloqueo/cambio de contraseña a un incidente anterior que se abrió con esas opciones desactivadas, reconocerlo y dejar que la actividad nueva cree otro incidente, o resolverlo administrativamente.
+Al abrir un incidente se registran las acciones habilitadas. Desactivar una acción suspende sus reintentos pendientes; no revierte acciones ya completadas. Para incorporar bloqueo/cambio de contraseña a un incidente anterior de volumen que se abrió con esas opciones desactivadas, reconocerlo y dejar que la actividad nueva cree otro incidente, o resolverlo administrativamente. Si se detecta un exceso de rechazos externos, también se añaden las acciones habilitadas que falten en el incidente abierto, sin repetir las ya completadas.
 
 Mientras el incidente siga abierto, `hold_queue=true` repite la búsqueda para capturar mensajes que hayan entrado entre ejecuciones. Una orden manual de liberar o eliminar su correo cancela esa repetición para el incidente revisado.
 
 El informe de correo siempre corresponde a una sola cuenta. La separación mínima de seis horas se conserva entre reinicios, cambios de límites y reconocimiento/reapertura de incidentes. Un valor antiguo de 3600 se eleva automáticamente a 21600; se puede elegir un intervalo mayor.
 
 ## Edición con nano y servicio
+
+Desde 2.1, `auto_update=true` y `auto_update_interval=3600` controlan un timer systemd independiente que instala releases estables superiores. El upgrade incorpora las variables ausentes e instala/habilita el timer automáticamente. Se conserva cualquier valor explícito, incluido `auto_update=false`. Para aplicar inmediatamente un cambio de intervalo o desactivar el timer, guardar el `.conf` y reiniciar el analizador. La ruta automática comprueba siempre el valor vigente de `auto_update` antes de consultar GitHub. [Funcionamiento y comprobaciones](UPGRADE.md#actualización-automática-desde-210).
 
 Se puede editar y guardar el archivo mientras el servicio está activo. Cada pasada utiliza una instantánea validada. Si se lee un guardado incompleto o inválido, se mantiene la última configuración válida, en vez de aplicar valores por defecto o detener el bucle. El problema se indica en Monit. Las opciones administrativas que modifican la instalación requieren corregir primero esa configuración inválida.
 

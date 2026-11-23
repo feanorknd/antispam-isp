@@ -11,7 +11,7 @@ for name in log_file state_dir max_sent time_period initial_position max_read_by
     reminder_interval foreign_sender_divisor sample_count notify block_smtp hold_queue reset_password monitor_local block_local \
     postfix_outbound_delay postfix_destination_delay postfix_headroom postfix_client_message_limit \
     run_interval lock_wait service_unit backup_interval integrity_interval backup_copies status_http_host status_http_port \
-    analytics_enabled analytics_outbox_mb \
+    analytics_enabled analytics_outbox_mb auto_update auto_update_interval \
     routing_mode guard_map postfix_config monit_config monit_enabled monit_script \
     alert_transport alert_from smtp_host smtp_port smtp_security smtp_user \
     smtp_password ispconfig_database ispconfig_server_id mysql_socket postconf_bin \
