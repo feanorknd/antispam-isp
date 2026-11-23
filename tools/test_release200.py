@@ -224,7 +224,10 @@ if action=='start':
                             with urlopen("http://127.0.0.1:%d/dashboard/api/overview?user=new%%40example.test" % port, timeout=2) as response:
                                 panel = json.load(response)
                             if panel["totals"]["recipients"] == 2 and panel["worker"]["ok"]:
-                                break
+                                # Los usuarios pueden llegar en lotes distintos al trabajador.
+                                with urlopen("http://127.0.0.1:%d/dashboard/api/overview?ignored=only" % port, timeout=2) as response:
+                                    if json.load(response)["totals"]["recipients"] == 1:
+                                        break
                         elif status.get("last_success", 0) > 0:
                             break
                     except (OSError, ValueError, KeyError):

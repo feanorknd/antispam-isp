@@ -45,5 +45,19 @@
   "analytics_regression": {"tests": 18, "passed": 18},
   "http_regression": {"tests": 9, "passed": 9},
   "website_regression": {"tests": 18, "passed": 18},
-  "package": {"old_validators_checked": 6, "bundle_integrity_checked": true, "reproducible": true}
+  "package": {"old_validators_checked": 6, "bundle_integrity_checked": true, "reproducible": true},
+  "post_publication": {
+    "latest_stable": "v2.1.0",
+    "published_archive_sha256": "17d7a54766516f6e14afb6707957af978e269e280e0fa7b071d7c43e128cfae6",
+    "live_upgrade": {
+      "from": "2.0.0",
+      "to": "2.1.0",
+      "platform": "ubuntu:focal / Python 3.8",
+      "main_service_initially_active_and_stopped": true,
+      "real_github_https_download_and_verification": true,
+      "tls_verification_enabled": true,
+      "timer_enabled_and_automatic_no_new_release_checked": true,
+      "result": "passed"
+    }
+  }
 }
