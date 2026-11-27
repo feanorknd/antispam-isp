@@ -141,6 +141,10 @@ Para evitar que la actividad legítima vuelva a superar el umbral, corregir ante
 | Aviso por sendmail atrasado | Revisar la cola o utilizar un canal SMTP directo para informes |
 | Estado atrasado en Monit | Revisar el servicio, permisos, bloqueo de ejecución y errores del script |
 
+### `postcat` no encuentra el fichero de cola
+
+Desde 2.1.1, si un mensaje aceptado desaparece antes de que el analizador pueda leer su sobre, se registra `cola_consulta_pendiente`. Se vuelve a consultar mientras la ficha siga activa y se deja un margen de 240 segundos para que el log complete los datos. Si el problema sigue vigente al vencer el plazo, se publica en `issues` en la siguiente pasada. Un `postfix/postsuper[PID]: ID: removed` confirma el borrado administrativo y cierra el pendiente; un resumen `Deleted: N messages` sin IDs no lo confirma para ningún mensaje individual. Los errores de permisos, clasificación o estado atrasado siguen notificándose sin ese margen.
+
 ### «Cola no reconocida» y subdirectorios Postfix
 
 Una cabecera como `*** ENVELOPE RECORDS deferred/A/ABC123DEF0 ***` es normal: `deferred` es la cola y `A` un subdirectorio de hash. Desde 1.2.1 se reconocen rutas planas y con varios niveles para IDs cortos/largos, incluidas disposiciones distintas entre colas. Versiones anteriores podían mostrar `Cola no reconocida` para esos mensajes; actualizar y esperar la siguiente pasada, conservando el estado existente.

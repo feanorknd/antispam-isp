@@ -31,13 +31,16 @@ from postfix_settings import restart_postfix, MonitorError, LocalGuard, Websites
 import runtime
 from state_recovery import Recovery, check_database, corruption
 
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 MIN_NOTICE_INTERVAL = 6 * 3600
+QUEUE_MISSING_GRACE = 240
 QUEUE_ID = re.compile(r"^[A-Za-z0-9]{5,32}$")
-TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|pickup|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard)\[\d+\]: ([A-Za-z0-9]+): (.*)")
+TAG = re.compile(r"postfix(?:/[^ /\[]+)?/(smtpd|pickup|qmgr|cleanup|smtp|relay|lmtp|local|virtual|pipe|error|discard|postsuper)\[\d+\]: ([A-Za-z0-9]+): (.*)")
 # Admite también transports con syslog_name personalizado: postfix/nombre[PID].
 CUSTOM_TAG = re.compile(r"postfix/([^ /\[]+)\[\d+\]: ([A-Za-z0-9]+): (.*)")
 SMTP_SESSION = re.compile(r"^(?:\S+|[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(postfix(?:/[^ /\[]+)?/smtpd\[\d+\]): (.*)$")
+POSTSUPER_REMOVAL = re.compile(r"^(?:\S+|[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+\S+\s+"
+                              r"postfix(?:/[^ /\[]+)?/postsuper\[\d+\]: [A-Za-z0-9]+: removed$")
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS messages (
@@ -57,6 +60,9 @@ CREATE TABLE IF NOT EXISTS recipients (
  mid INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
  address TEXT NOT NULL, external INTEGER, delivery TEXT, log_line TEXT,
  PRIMARY KEY(mid,address));
+CREATE TABLE IF NOT EXISTS queue_missing (
+ mid INTEGER PRIMARY KEY REFERENCES messages(id) ON DELETE CASCADE,
+ first_seen REAL NOT NULL, detail TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS incidents (
  id INTEGER PRIMARY KEY, account TEXT NOT NULL, opened REAL NOT NULL,
  event_time REAL NOT NULL, peak INTEGER NOT NULL, maximum INTEGER NOT NULL,
@@ -250,6 +256,10 @@ class Config:
         return cls(values)
 
 
+class QueueFileMissing(MonitorError):
+    pass
+
+
 class Commands:
     def __init__(self, config):
         self.c = config
@@ -265,7 +275,12 @@ class Commands:
         if p.returncode not in ok or (p.returncode != 0 and p.stderr.strip()):
             # No devolver SQL, contraseñas, hashes ni argumentos en errores públicos.
             detail = "" if binary in ("mysql", "openssl") else ": " + p.stderr.strip()[:300]
-            raise MonitorError("%s terminó con código %s%s" % (binary, p.returncode, detail))
+            error = "%s terminó con código %s%s" % (binary, p.returncode, detail)
+            if (binary == "postcat" and p.returncode == 1 and args and re.fullmatch(
+                    r"[^:\n]+: fatal: open queue file " + re.escape(command[-1]) + r": No such file or directory",
+                    p.stderr.strip())):
+                raise QueueFileMissing(error)
+            raise MonitorError(error)
         return p.stdout
 
     def pc(self, *args):
@@ -306,7 +321,8 @@ class Store:
             raise MonitorError("Versión de base de datos no compatible")
         self.db.executescript(SCHEMA)
         additions = {"messages": {"sender": "TEXT", "foreign_sender": "INTEGER NOT NULL DEFAULT 0",
-                                   "local_identity": "TEXT", "local_error": "TEXT", "envelope_key": "TEXT"},
+                                    "local_identity": "TEXT", "local_error": "TEXT", "envelope_key": "TEXT",
+                                    "admin_removed": "REAL"},
                      "incidents": {"base_maximum": "INTEGER", "reason": "TEXT NOT NULL DEFAULT 'volume'",
                                    "foreign_recipients": "INTEGER NOT NULL DEFAULT 0"}}
         for table, fields in additions.items():
@@ -447,6 +463,8 @@ class Parser:
         service, qid, text = match.groups()
         if not QUEUE_ID.fullmatch(qid):
             return
+        if service == "postsuper" and not POSTSUPER_REMOVAL.fullmatch(line):
+            return
         when = timestamp(line, self.now)
         self.last_time = max(self.last_time, when)
         self.first_time = when if self.first_time is None else min(self.first_time, when)
@@ -456,6 +474,9 @@ class Parser:
         pickup = re.fullmatch(r"uid=(\d+) from=<(.*?)>(?: orig_id=[A-Za-z0-9]+)?", text) if service == "pickup" else None
         if self.s.analytics:
             self.s.analytics.observe(when, service, qid, text, auth, pickup)
+        if service == "postsuper":
+            self.administrative_removal(qid, when)
+            return
         if service in ("smtpd", "cleanup") and text.startswith(("reject:", "milter-reject:")):
             # Solo identidad autenticada o correlación previa con la cola; nunca From.
             message = self.s.active(qid) if qid != "NOQUEUE" else None
@@ -564,6 +585,26 @@ class Parser:
         self.sample_counts[mid] = count
         if service == "qmgr" and text == "removed":
             self.sample_counts.pop(mid, None)
+
+    def administrative_removal(self, qid, when):
+        # Puede llegar después del removed de qmgr. No atribuir un evento antiguo
+        # (ni uno ambiguo en el mismo segundo de una reutilización) a la ficha nueva.
+        message = self.s.db.execute("SELECT id,created,accepted,admin_removed FROM messages WHERE qid=? AND created<=? "
+                                    "ORDER BY id DESC LIMIT 1", (qid, when)).fetchone()
+        if not message or message["admin_removed"] is not None or when < (message["accepted"] or 0):
+            return
+        mid = message["id"]
+        if int(when) == int(message["created"]) and self.s.db.execute(
+                "SELECT 1 FROM messages WHERE qid=? AND id<? LIMIT 1", (qid, mid)).fetchone():
+            return
+        self.s.db.execute("UPDATE messages SET removed=1,admin_removed=? WHERE id=?", (when, mid))
+        self.s.db.execute("DELETE FROM queue_missing WHERE mid=?", (mid,))
+        self.s.db.execute("DELETE FROM smtp_pending WHERE mid=?", (mid,))
+        if self.s.analytics:
+            self.s.analytics.dirty.add(mid)
+        self.sample_counts.pop(mid, None)
+        if self.realtime:
+            runtime.audit("cola_borrado_administrativo", queue_id=qid, mensaje_id=mid)
 
 
 class LogReader:
@@ -949,7 +990,7 @@ class Queue:
         self.cmd.run("postsuper", args)
 
 
-def resolve_recipients(store, config, router, queue=None, bootstrap=False):
+def resolve_recipients(store, config, router, queue=None, bootstrap=False, now=None):
     issues = []
     envelope_cache = {}
     if bootstrap and queue:
@@ -992,11 +1033,21 @@ def resolve_recipients(store, config, router, queue=None, bootstrap=False):
                     store.db.execute("UPDATE messages SET nrcpt=? WHERE id=?", (total, m["id"]))
                 if m["accepted"] is None:
                     store.db.execute("UPDATE messages SET accepted=?,size=? WHERE id=?", (env.arrival, env.size, m["id"]))
-            except MonitorError as e:
+            except QueueFileMissing as e:
                 # AUTH/ID no equivale a aceptación. DATA puede seguir en curso o abortarse.
-                # La falta de sobre sí es un problema cuando qmgr ya confirmó aceptación.
+                if m["accepted"] is not None:
+                    first_seen = time.time() if now is None else now
+                    pending = store.db.execute("INSERT OR IGNORE INTO queue_missing VALUES (?,?,?)",
+                                               (m["id"], first_seen, str(e)))
+                    if pending.rowcount:
+                        runtime.audit("cola_consulta_pendiente", queue_id=m["qid"], mensaje_id=m["id"],
+                                      margen_segundos=QUEUE_MISSING_GRACE, detalle=str(e))
+                continue
+            except MonitorError as e:
+                # Cualquier otro fallo conserva su visibilidad inmediata.
                 if m["accepted"] is not None:
                     issues.append(str(e))
+            store.db.execute("DELETE FROM queue_missing WHERE mid=?", (m["id"],))
     for r in store.db.execute("SELECT r.mid,r.address FROM recipients r WHERE external IS NULL").fetchall():
         try:
             store.recipient(r["mid"], r["address"], router.external(r["address"]))
@@ -1008,7 +1059,18 @@ def resolve_recipients(store, config, router, queue=None, bootstrap=False):
             store.db.execute("UPDATE rejections SET external=? WHERE id=?", (external, r["id"]))
         except MonitorError as e:
             issues.append("Rechazo sin clasificar: " + str(e))
+    if queue is not None:
+        prune_queue_missing(store, config, time.time() if now is None else now)
     return issues
+
+
+def prune_queue_missing(store, config, now):
+    # removed de qmgr solo detiene postcat: todavía pueden faltar destinatarios.
+    store.db.execute("DELETE FROM queue_missing WHERE mid IN ("
+                     "SELECT m.id FROM queue_missing qm JOIN messages m ON m.id=qm.mid "
+                     "WHERE m.accepted IS NULL OR (m.removed=1 AND m.accepted<?) OR "
+                     "((m.removed=1 OR m.sender IS NOT NULL) AND m.nrcpt IS NOT NULL AND m.nrcpt <= "
+                     "(SELECT COUNT(*) FROM recipients r WHERE r.mid=m.id)))", (now - config.max_period,))
 
 
 def snapshot(store, account, when, period, limit):
@@ -1579,16 +1641,20 @@ class Actions:
             atomic_write(reports / ("incident-%d.txt" % incident["id"]), self.report(incident))
 
 
-def coverage_issues(store, config, now):
+def coverage_issues(store, config, now, queue_at=None):
     issues = []
     if store.get("recovery_pause"):
         issues.append(store.get("recovery_pause"))
     issues.extend(r[0] for r in store.db.execute("SELECT DISTINCT local_error FROM messages WHERE local_error IS NOT NULL AND accepted>=?", (now - config.max_period,)))
-    for m in store.db.execute("SELECT m.qid,m.nrcpt,COUNT(r.address) AS known,SUM(CASE WHEN r.external IS NULL THEN 1 ELSE 0 END) AS unknown "
-                              "FROM messages m LEFT JOIN recipients r ON r.mid=m.id WHERE m.accepted>=? "
-                              "GROUP BY m.id HAVING (m.nrcpt IS NOT NULL AND COUNT(r.address)<m.nrcpt) OR "
-                              "SUM(CASE WHEN r.external IS NULL THEN 1 ELSE 0 END)>0",
-                              (now - config.max_period,)):
+    expired = (now if queue_at is None else queue_at) - QUEUE_MISSING_GRACE
+    issues.extend(r[0] for r in store.db.execute("SELECT detail FROM queue_missing WHERE first_seen<=?", (expired,)))
+    for m in store.db.execute("SELECT m.qid FROM messages m LEFT JOIN recipients r ON r.mid=m.id "
+                              "LEFT JOIN queue_missing qm ON qm.mid=m.id WHERE m.accepted>=? "
+                              "GROUP BY m.id HAVING "
+                              "(m.admin_removed IS NULL AND (qm.first_seen IS NULL OR qm.first_seen<=?) AND "
+                              "(COUNT(r.address)=0 OR (m.nrcpt IS NOT NULL AND COUNT(r.address)<m.nrcpt))) OR "
+                              "SUM(CASE WHEN r.address IS NOT NULL AND r.external IS NULL THEN 1 ELSE 0 END)>0",
+                              (now - config.max_period, expired)):
         issues.append("destinatarios/aceptación incompletos para " + m["qid"])
     issues.extend("acción %s fallida: %s" % (r[0], r[1]) for r in store.db.execute("SELECT a.kind,a.error FROM actions a JOIN incidents i ON i.id=a.incident WHERE state='failed' AND i.acked IS NULL"))
     issues.extend("operación de cola pendiente: " + (r[0] or "sin detalle") for r in store.db.execute("SELECT error FROM queue_ops WHERE state='failed'"))
@@ -2603,7 +2669,7 @@ def _main(parser, args):
                     store.analytics.finish(now)
                     store.db.commit()
                 old = store.get("current", {})
-                summary = summarize(store, config, now, old, coverage_issues(store, config, now))
+                summary = summarize(store, config, now, old, coverage_issues(store, config, now, store.get("analysis_at", 0)))
                 # No simular una ejecución correcta del analizador al administrar un incidente.
                 summary["last_success"] = store.get("last_success", 0)
                 summary["last_success_local"] = runtime.human_timestamp(summary["last_success"]) if summary["last_success"] else None

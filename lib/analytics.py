@@ -135,7 +135,7 @@ class Capture:
             if len(text) > 8192:
                 self.dropped += 1
             self.add(["log", when, service, qid, text[:8192]])
-        if service == "qmgr" and text == "removed" and qid in self.unmonitored:
+        if service in ("qmgr", "postsuper") and text == "removed" and qid in self.unmonitored:
             self.unmonitored.discard(qid)
             self.store.db.execute("DELETE FROM stats_unmonitored WHERE qid=?", (qid,))
 
@@ -367,11 +367,13 @@ class History:
                             (identity, qid, account, at, pickup[2] if pickup else None))
             return
         m = self.current(qid)
-        if not m:
+        if not m or (service == "postsuper" and at < m["created"]):
             return
         mid, account = m["id"], m["account"]
         self.touch(mid)
-        if service == "qmgr":
+        if service == "postsuper" and text == "removed":
+            self.db.execute("UPDATE messages SET removed=1 WHERE id=?", (mid,))
+        elif service == "qmgr":
             if text == "removed":
                 self.db.execute("UPDATE messages SET removed=1 WHERE id=?", (mid,))
             else:

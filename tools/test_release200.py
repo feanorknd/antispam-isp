@@ -33,6 +33,7 @@ HASHES = {
     "1.3.3": "12e3a926394b34a3156b368076c261ed38e249a0ece56969a312559c59b267ab",
     "1.3.4": "7a7fdd25aed00ae2bb772fbf5ee030b013809eb03bcac0a5e8f906066b361dcf",
     "2.0.0": "d11f3eb673ad85ab41d3dd9ae39b2bc933805c26068ad957d4cd001990876e05",
+    "2.1.0": "17d7a54766516f6e14afb6707957af978e269e280e0fa7b071d7c43e128cfae6",
 }
 
 
@@ -88,7 +89,7 @@ class ReleasedUpgradeTests(unittest.TestCase):
     def tearDownClass(cls):
         subprocess.run(["/usr/sbin/postfix", "stop"], check=True, capture_output=True)
 
-    def check_upgrade(self, previous, active, enabled=True, auto_update=True, future_auto=False):
+    def check_upgrade(self, previous, active, enabled=True, auto_update=True, future_auto=False, automatic=False, rollback=False):
         with tempfile.TemporaryDirectory(dir="/root", prefix="upgrade200-") as temp:
             root = Path(temp)
             historical = previous_archive(previous)
@@ -151,15 +152,27 @@ if action=='start':
             unit.write_text(runtime.render_service(profile, target, str(config)))
             log.write_text("")
             state.mkdir(mode=0o700)
-            store = m.Store(state / "state.sqlite3")
-            with store.db:
-                store.set("mode", "live")
-                store.set("upgrade_preserved", {"important": True})
-                store.db.execute("INSERT INTO messages(qid,account,created,accepted,sender,nrcpt,removed,auth_line) VALUES (?,?,?,?,?,?,?,?)",
-                                 ("PRE200", "existing@example.test", time.time() - 60, time.time() - 60, "existing@example.test", 1, 1,
-                                  "existing authenticated message"))
-                store.recipient(1, "old@remote.test", 1, "sent", time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(time.time() - 60)) + " old delivery")
-            store.db.close()
+            # Usar el Store realmente publicado, no abrir la BD con el candidato antes de la migración.
+            run("python3", "-c", "import sys,time\nfrom pathlib import Path\nsys.path.insert(0,sys.argv[1])\n"
+                "from outbound_spam import Store\nstore=Store(Path(sys.argv[2]))\n"
+                "with store.db:\n"
+                " store.set('mode','live')\n store.set('upgrade_preserved',{'important': True})\n"
+                " store.db.execute('INSERT INTO messages(qid,account,created,accepted,sender,nrcpt,removed,auth_line) VALUES (?,?,?,?,?,?,?,?)',"
+                " ('PRE200','existing@example.test',time.time()-60,time.time()-60,'existing@example.test',1,1,'existing authenticated message'))\n"
+                " store.recipient(1,'old@remote.test',1,'sent',time.strftime('%Y-%m-%dT%H:%M:%S+00:00', time.gmtime(time.time()-60))+' old delivery')\n"
+                "store.db.close()", str(data / "current/lib"), str(state / "state.sqlite3"))
+
+            def check_schema(migrated):
+                import sqlite3
+                from contextlib import closing
+                with closing(sqlite3.connect(state / "state.sqlite3")) as connection:
+                    self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 4)
+                    self.assertEqual(bool(connection.execute("SELECT 1 FROM sqlite_master WHERE name='queue_missing'").fetchone()), migrated)
+                    self.assertEqual("admin_removed" in {r[1] for r in connection.execute("PRAGMA table_info(messages)")}, migrated)
+                    self.assertEqual(connection.execute("SELECT delivery FROM recipients WHERE address='old@remote.test'").fetchone(), ("sent",))
+
+            if previous == "2.1.0":
+                check_schema(False)
             archive = ROOT / "dist" / VERSION / ("outbound-spam-" + VERSION + ".tar.gz")
             self.assertTrue(archive.exists(), "Generar el paquete final antes de ejecutar la prueba")
             checksum = d.digest(archive)
@@ -170,14 +183,34 @@ if action=='start':
                 {"name": "SHA256SUMS", "browser_download_url": url + "SHA256SUMS"}]}
             (root / "metadata.json").write_text(json.dumps(metadata))
             driver = root / "upgrade.py"
-            driver.write_text("import sys\nfrom pathlib import Path\nsys.path.insert(0,%r)\nimport distribution\n" % str(data / "current/lib") +
+            script = ("import sys\nfrom pathlib import Path\nsys.path.insert(0,%r)\nimport distribution\n" % str(data / "current/lib") +
                               "payloads={%r:Path(%r).read_bytes(),%r:Path(%r).read_bytes(),%r:%r}\n" %
                               (d.LATEST, str(root / "metadata.json"), url + archive.name, str(archive), url + "SHA256SUMS", (checksum + "  " + archive.name + "\n").encode()) +
                               ("" if os.environ.get("LIVE_RELEASE") == "1" else
                                "distribution.upgrade.__defaults__=(lambda url,limit:payloads[url],distribution._prepare)\n") +
-                              "from outbound_spam import main\nsys.argv=['outbound-spam.sh','--config',%r,'--upgrade'];sys.exit(main())\n" % str(config))
+                               "from outbound_spam import main\nsys.argv=['outbound-spam.sh','--config',%r,'--upgrade'%s];sys.exit(main())\n" %
+                               (str(config), ",'--automatic'" if automatic else ""))
+            driver.write_text(script)
             env.update(OUTBOUND_SPAM_BASE=str(target), OUTBOUND_SPAM_CODE=str(data / "current"))
             try:
+                if rollback:
+                    driver.write_text(script.replace("from outbound_spam import main", """
+import sqlite3
+download, prepare = distribution.upgrade.__defaults__
+def prepare_then_fail(*args):
+    prepare(*args)
+    with sqlite3.connect(%r) as connection:
+        assert connection.execute("SELECT 1 FROM sqlite_master WHERE name='queue_missing'").fetchone()
+    raise RuntimeError('failure after verified candidate migration')
+distribution.upgrade.__defaults__ = (download, prepare_then_fail)
+from outbound_spam import main""" % str(state / "state.sqlite3")))
+                    failed = subprocess.run(["python3", str(driver)], env=env, capture_output=True, text=True, timeout=60)
+                    self.assertNotEqual(failed.returncode, 0)
+                    self.assertIn("failure after verified candidate migration", failed.stderr + failed.stdout)
+                    self.assertIn(previous, run("bash", str(target / "outbound-spam.sh"), "--version"))
+                    self.assertEqual((root / "active").read_text(), "inactive")
+                    check_schema(False)
+                    driver.write_text(script)
                 result = json.loads(run("python3", str(driver)))
                 self.assertTrue(result["updated"])
                 self.assertEqual(result["version"], VERSION)
@@ -195,6 +228,9 @@ if action=='start':
                 self.assertTrue(json.loads((data / "outbound-spam.conf.last-good.json").read_text())["data"])
                 self.assertIn(VERSION, run("bash", str(target / "outbound-spam.sh"), "--version"))
                 self.assertTrue(json.loads((data / "installation.json").read_text())["project"] == d.PROJECT)
+                if previous == "2.1.0":
+                    check_schema(True)
+                    self.assertTrue(Path(result["backup"]).is_dir())
                 store = m.Store(state / "state.sqlite3")
                 self.assertTrue(store.get("upgrade_preserved")["important"])
                 self.assertEqual(store.db.execute("SELECT COUNT(*) FROM messages WHERE qid='PRE200'").fetchone()[0], 1)
@@ -342,6 +378,12 @@ if action=='start':
 
     def test_automatic_upgrade_to_superior_release(self):
         self.check_upgrade("2.0.0", True, future_auto=True)
+
+    def test_upgrade_210_automatic_running(self):
+        self.check_upgrade("2.1.0", True, automatic=True)
+
+    def test_upgrade_210_stopped_and_rollback(self):
+        self.check_upgrade("2.1.0", False, rollback=True)
 
 
 if __name__ == "__main__":

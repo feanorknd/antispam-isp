@@ -1,6 +1,8 @@
 # Outbound Spam Monitor
 
-Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión estable **2.1.0**, rama **`main`**.
+Control de abuso saliente **SMTP AUTH y webs PHP/sendmail**, con detección incremental, servicio systemd, informes, Monit y contención por identidad. Versión estable **2.1.1**, rama **`main`**.
+
+**2.1.1 da 4 minutos de margen a los ficheros de cola que `postcat` no encuentra y reconoce los borrados de `postsuper` con ID confirmado en el log.** El upgrade migra SQLite automáticamente; no cambia los campos de NodePing. [Notas del release 2.1.1](docs/RELEASE_2.1.1.md).
 
 **2.1 añade actualización automática aproximadamente cada hora y contención por rechazos externos**: al superar `max_sent/2` dentro de la ventana de la cuenta se aplican las mismas acciones configuradas, incluido el cambio de contraseña si `reset_password=true`. El upgrade desde 1.3.x o 2.0.0 instala y habilita el timer sin intervención adicional. [Notas del release 2.1.0](docs/RELEASE_2.1.0.md).
 
@@ -31,7 +33,7 @@ VERSION                       Versión de la distribución
 
 ## Instalación y actualización
 
-Descargar `outbound-spam-2.1.0.tar.gz` y `SHA256SUMS` del [release 2.1.0](https://github.com/feanorknd/antispam-isp/releases/tag/v2.1.0), comprobar el checksum, extraer y ejecutar:
+Descargar `outbound-spam-2.1.1.tar.gz` y `SHA256SUMS` del [release 2.1.1](https://github.com/feanorknd/antispam-isp/releases/tag/v2.1.1), comprobar el checksum, extraer y ejecutar:
 
 ```bash
 sudo ./install.sh --install-deps

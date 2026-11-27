@@ -1,5 +1,11 @@
 # Cambios efectuados
 
+## 2.1.1 — 2026-11-27
+
+- Margen persistente de 240 segundos para un fichero de cola que `postcat` no encuentra al analizar un mensaje aceptado. Los avisos relacionados solo afectan al estado si siguen vigentes al terminar el margen.
+- Reconoce `postsuper: ID: removed`, conserva la evidencia del mensaje y no atribuye los resúmenes masivos a IDs individuales.
+- Migración SQLite aditiva durante `--prepare-upgrade`. Se mantienen los campos de NodePing, el esquema operativo 4 y las alertas inmediatas por spam y otros fallos.
+
 ## 2.1.0 — 2026-11-23
 
 - Actualización automática mediante timer systemd independiente, habilitado durante el upgrade desde los actualizadores publicados y al instalar/arrancar el servicio.

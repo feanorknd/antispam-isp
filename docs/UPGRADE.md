@@ -2,18 +2,18 @@
 
 Repositorio público: **https://github.com/feanorknd/antispam-isp**.
 
-> **2.1.0 estable:** actualización directa desde 1.3.x y 2.0.0 con su propio `--upgrade`. Completa configuración, conserva estado/acciones y activa el chequeo horario de releases superiores. Detalles: [RELEASE_2.1.0.md](RELEASE_2.1.0.md).
+> **2.1.1 estable:** actualización automática desde 2.1.0 con el timer habilitado; también admite `--upgrade` manual. La preparación migra SQLite sin perder el estado. Detalles: [RELEASE_2.1.1.md](RELEASE_2.1.1.md).
 
-## Instalación nueva desde el release 2.1.0
+## Instalación nueva desde el release 2.1.1
 
 En un servidor Debian/Ubuntu con Postfix/ISPConfig configurados:
 
 ```bash
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.1.0/outbound-spam-2.1.0.tar.gz
-curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.1.0/SHA256SUMS
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.1.1/outbound-spam-2.1.1.tar.gz
+curl -fLO https://github.com/feanorknd/antispam-isp/releases/download/v2.1.1/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf outbound-spam-2.1.0.tar.gz
-sudo ./outbound-spam-2.1.0/install.sh --install-deps
+tar -xzf outbound-spam-2.1.1.tar.gz
+sudo ./outbound-spam-2.1.1/install.sh --install-deps
 ```
 
 `--install-deps` solicita a apt **únicamente `postfix-sqlite`**, sin paquetes recomendados. Python 3.8+ y Postfix deben estar instalados previamente; las demás herramientas utilizadas por las funciones que se activen se preparan fuera del instalador. Omitir la opción si el módulo ya está presente. El instalador no configura un servidor ISPConfig desde cero ni sustituye la configuración del MTA.
